@@ -130,7 +130,7 @@ export const TaskList: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Task Manager</h1>
           <p className="text-gray-600 mt-2">
-            Manage your tasks, track progress, and stay organized
+           管理任务，追踪项目，记录心情
           </p>
         </div>
         <div className="flex items-center space-x-3 mt-4 md:mt-0">
@@ -142,7 +142,7 @@ export const TaskList: React.FC = () => {
             className="btn btn-primary flex items-center"
           >
             <FaPlus className="w-4 h-4 mr-2" />
-            New Task
+            新任务
           </button>
         </div>
       </div>
@@ -166,12 +166,12 @@ export const TaskList: React.FC = () => {
         <div className="bg-white rounded-xl shadow-sm p-12 text-center">
           <div className="text-4xl mb-4">📝</div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">
-            No tasks found
+            无事发生
           </h3>
           <p className="text-gray-600 mb-6">
             {tasks.length === 0 
-              ? "You don't have any tasks yet. Create your first task!" 
-              : "No tasks match your current filters. Try changing your filter settings."
+              ? "快来开始人生的第一个任务吧！" 
+              : "该条件下没有任务，好诶."
             }
           </p>
           {tasks.length === 0 && (
@@ -179,7 +179,7 @@ export const TaskList: React.FC = () => {
               onClick={() => setShowForm(true)}
               className="btn btn-primary"
             >
-              Create Your First Task
+              人生首秀！
             </button>
           )}
         </div>
@@ -192,7 +192,7 @@ export const TaskList: React.FC = () => {
                 <FaList className="w-6 h-6 text-blue-600" />
               </div>
               <div>
-                <div className="text-sm text-gray-600">Total Tasks</div>
+                <div className="text-sm text-gray-600">任务数</div>
                 <div className="text-2xl font-bold text-gray-900">{tasks.length}</div>
               </div>
             </div>
@@ -201,7 +201,7 @@ export const TaskList: React.FC = () => {
                 <FaCalendarCheck className="w-6 h-6 text-green-600" />
               </div>
               <div>
-                <div className="text-sm text-gray-600">Completed</div>
+                <div className="text-sm text-gray-600">完成数</div>
                 <div className="text-2xl font-bold text-gray-900">
                   {completedTasks} ({Math.round((completedTasks / tasks.length) * 100)}%)
                 </div>
@@ -212,7 +212,7 @@ export const TaskList: React.FC = () => {
                 <FaPlus className="w-6 h-6 text-yellow-600" />
               </div>
               <div>
-                <div className="text-sm text-gray-600">Total Energy</div>
+                <div className="text-sm text-gray-600">总能量</div>
                 <div className="text-2xl font-bold text-gray-900">
                   {totalEnergy} ⚡
                 </div>

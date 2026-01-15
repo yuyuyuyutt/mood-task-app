@@ -119,7 +119,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
 
   const getMoodLabel = (moodScore?: number): string => {
     if (!moodScore) return '';
-    const labels = ['Very Bad', 'Bad', 'Neutral', 'Good', 'Excellent'];
+    const labels = ['糟糕透了', '不开心', '一般', '还行', '漂亮的一天'];
     return labels[moodScore - 1] || '';
   };
 
@@ -136,7 +136,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center">
           <FaCalendarAlt className="w-5 h-5 text-gray-500 mr-2" />
-          <h2 className="text-xl font-semibold text-gray-900">Mood Calendar</h2>
+          <h2 className="text-xl font-semibold text-gray-900">日期</h2>
         </div>
         
         <div className="flex items-center space-x-4">
@@ -264,31 +264,6 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
             </button>
           );
         })}
-      </div>
-
-      {/* 图例 */}
-      <div className="mt-8 pt-6 border-t">
-        <div className="text-sm font-medium text-gray-700 mb-3">Mood Legend</div>
-        <div className="flex flex-wrap gap-3">
-          {[1, 2, 3, 4, 5].map(score => (
-            <div key={score} className="flex items-center">
-              <div className={`w-4 h-4 rounded ${MOOD_COLOR_MAP[score] || 'bg-gray-400'} mr-2`}></div>
-              <span className="text-sm text-gray-600 mr-2">
-                {score}/5
-              </span>
-              <span className="text-lg mr-1">{MOOD_EMOJI_MAP[score] || '😐'}</span>
-              <span className="text-xs text-gray-500">{getMoodLabel(score)}</span>
-            </div>
-          ))}
-          <div className="flex items-center ml-4">
-            <div className="w-4 h-4 bg-gray-100 border border-gray-300 rounded mr-2"></div>
-            <span className="text-sm text-gray-600">No entry</span>
-          </div>
-          <div className="flex items-center">
-            <div className="w-4 h-4 border-2 border-primary-500 rounded mr-2"></div>
-            <span className="text-sm text-gray-600">Today</span>
-          </div>
-        </div>
       </div>
 
       {/* 月份记录总结 */}

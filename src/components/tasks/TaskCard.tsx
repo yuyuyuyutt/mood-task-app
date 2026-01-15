@@ -138,8 +138,8 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onUpdate, onDelete, on
             
             {/* 状态 */}
             <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(task.status)}`}>
-              {task.status === 'completed' ? 'Completed' : 
-               task.status === 'in_progress' ? 'In Progress' : 'Pending'}
+              {task.status === 'completed' ? '已完成' : 
+               task.status === 'in_progress' ? 'In Progress' : '未完成'}
             </span>
           </div>
           

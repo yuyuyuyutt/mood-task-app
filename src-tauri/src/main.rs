@@ -1,55 +1,38 @@
+// src/main.rs
 mod database;
+mod commands;
 
-use database::{Task, Mood};
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GreetResponse {
-    message: String,
-}
-
-// Tauri 命令
-#[tauri::command]
-fn greet(name: &str) -> GreetResponse {
-    GreetResponse {
-        message: format!("Hello, {}! You've been greeted from Rust!", name),
-    }
-}
-
-#[tauri::command]
-fn get_tasks() -> Vec<Task> {
-    // 返回模拟数据
-    vec![
-        Task {
-            id: 1,
-            title: "Welcome to MoodTask".to_string(),
-            description: Some("This is your first task".to_string()),
-            status: "pending".to_string(),
-            priority: 2,
-            energy_cost: Some(3),
-            estimated_time: Some(30),
-            actual_time: None,
-            due_date: None,
-            completed_at: None,
-            tags: Some("welcome,example".to_string()),
-            created_at: chrono::Utc::now().to_rfc3339(),
-        }
-    ]
-}
-
-#[tauri::command]
-fn save_mood(mood: Mood) -> Result<i64, String> {
-    // 暂时返回模拟ID
-    Ok(1)
-}
+use tauri::Manager; // 添加这行导入
+use commands::{AppState, get_tasks, create_task, update_task, delete_task, get_moods, save_mood, delete_mood};
 
 fn main() {
     tauri::Builder::default()
+        .setup(|app| {
+            // 在 setup 阶段初始化数据库
+            match database::init_db(app.handle()) {
+                Ok(pool) => {
+                    println!("数据库初始化成功");
+                    // 创建应用状态并管理
+                    let app_state = AppState { db_pool: pool };
+                    app.manage(app_state);
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("数据库初始化失败: {}", e);
+                    // 在Tauri 2.0中，setup返回Result<(), Box<dyn std::error::Error>>
+                    Err(Box::<dyn std::error::Error>::from(e))
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
-            greet,
             get_tasks,
+            create_task,
+            update_task,
+            delete_task,
+            get_moods,
             save_mood,
+            delete_mood,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("运行Tauri应用失败");
 }

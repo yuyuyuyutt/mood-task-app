@@ -22,8 +22,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
 
   const navigationItems = [
-    { path: '/', label: '任务管理', icon: <FaTasks />, exact: true },
-    { path: '/tasks', label: '任务列表', icon: <FaCheckCircle /> },
+    { path: '/', label: '任务列表', icon: <FaTasks />, exact: true },
     { path: '/mood', label: '心情日记', icon: <FaSmile /> },
     { path: '/stats', label: '数据统计', icon: <FaChartBar /> },
     { path: '/settings', label: '系统设置', icon: <FaCog /> },
@@ -79,7 +78,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <FaHome className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">生产力助手</h1>
+                <h1 className="text-xl font-bold text-gray-900">高山仰止</h1>
                 <p className="text-sm text-gray-500 mt-1">管理任务与心情</p>
               </div>
             </div>
@@ -177,7 +176,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col md:flex-row justify-between items-center text-sm text-gray-500">
               <div className="mb-2 md:mb-0">
-                © {new Date().getFullYear()} 生产力助手. 保留所有权利.
+                © {new Date().getFullYear()} 高山仰止. 保留所有权利.
               </div>
               <div className="flex items-center space-x-4">
                 <span className="inline-flex items-center">

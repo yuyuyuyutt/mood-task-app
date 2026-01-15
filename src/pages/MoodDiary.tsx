@@ -58,12 +58,6 @@ export const MoodDiary: React.FC = () => {
     <div className="max-w-6xl mx-auto p-4">
       {/* 头部 */}
       <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">心情日记</h1>
-          <p className="text-gray-600 mt-2">
-            记录您的情绪和日常体验
-          </p>
-        </div>
         <div className="flex items-center space-x-3">
           <button
             onClick={() => {

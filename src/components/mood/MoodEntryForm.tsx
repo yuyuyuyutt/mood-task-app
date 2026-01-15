@@ -19,11 +19,11 @@ interface MoodEntryFormProps {
 }
 
 const DEFAULT_MOOD_OPTIONS: MoodOption[] = [
-  { emoji: '😊', score: 5, label: 'Excellent', color: 'bg-green-100 text-green-800' },
-  { emoji: '🙂', score: 4, label: 'Good', color: 'bg-blue-100 text-blue-800' },
-  { emoji: '😐', score: 3, label: 'Neutral', color: 'bg-gray-100 text-gray-800' },
-  { emoji: '😔', score: 2, label: 'Down', color: 'bg-yellow-100 text-yellow-800' },
-  { emoji: '😢', score: 1, label: 'Bad', color: 'bg-red-100 text-red-800' },
+  { emoji: '😊', score: 5, label: '漂亮的一天', color: 'bg-green-100 text-green-800' },
+  { emoji: '🙂', score: 4, label: '还行', color: 'bg-blue-100 text-blue-800' },
+  { emoji: '😐', score: 3, label: '一般', color: 'bg-gray-100 text-gray-800' },
+  { emoji: '😔', score: 2, label: '不开心', color: 'bg-yellow-100 text-yellow-800' },
+  { emoji: '😢', score: 1, label: '糟糕透了', color: 'bg-red-100 text-red-800' },
 ];
 
 const TAG_OPTIONS = [
@@ -125,7 +125,7 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
     <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold text-gray-900">
-          {stableExistingEntry ? 'Update Mood Entry' : 'New Mood Entry'}
+          {stableExistingEntry ? '这天怎么了' : '我在听哦'}
         </h2>
         <div className="flex items-center text-sm text-gray-600">
           <FaCalendarAlt className="w-4 h-4 mr-1" />
@@ -136,7 +136,7 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
       {/* Mood Selection */}
       <div className="mb-8">
         <label className="block text-sm font-medium text-gray-700 mb-4">
-          How are you feeling today?
+          今天怎么样呢，我的朋友
         </label>
         <div className="grid grid-cols-5 gap-2">
           {DEFAULT_MOOD_OPTIONS.map(option => (
@@ -159,35 +159,23 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
             </button>
           ))}
         </div>
-        <div className="mt-4">
-          <div className="flex items-center">
-            <span className="text-sm font-medium text-gray-700 mr-3">Selected:</span>
-            <span className="text-2xl mr-2">{selectedMoodOption.emoji}</span>
-            <span className={`px-3 py-1 rounded-full text-sm ${selectedMoodOption.color}`}>
-              {selectedMoodOption.label} ({formData.mood_score}/5)
-            </span>
-          </div>
-        </div>
       </div>
 
       {/* Content */}
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-3">
-          How was your day?
+          发生了什么呢
           <span className="ml-2 text-xs text-gray-500">
-            {contentLength}/500 characters
+            {contentLength}/500
           </span>
         </label>
         <textarea
           className="input min-h-[120px] resize-none"
-          placeholder="Write about your day, thoughts, or feelings..."
+          placeholder="和我说说吧，我的朋友"
           value={formData.content}
           onChange={handleContentChange}
           maxLength={500}
         />
-        <div className="mt-2 text-xs text-gray-500">
-          Tip: Try to focus on specific events or feelings from today.
-        </div>
       </div>
 
       {/* Tags */}
@@ -253,7 +241,7 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
             onClick={onCancel}
             className="btn btn-secondary"
           >
-            Cancel
+            消失
           </button>
         )}
         <button
@@ -261,7 +249,7 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
           className="btn btn-primary"
           disabled={!formData.content.trim()}
         >
-          {stableExistingEntry ? 'Update Entry' : 'Save Entry'}
+          {stableExistingEntry ? '编辑' : '我记下了'}
         </button>
       </div>
     </form>

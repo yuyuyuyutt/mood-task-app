@@ -151,10 +151,10 @@ export const TaskForm: React.FC<TaskFormProps> = ({
         <div className="flex items-center justify-between p-6 border-b">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">
-              {isEditing ? 'Edit Task' : 'Create New Task'}
+              {isEditing ? '编辑任务' : '创建任务'}
             </h2>
             <p className="text-gray-600 text-sm mt-1">
-              {isEditing ? 'Update your task details' : 'Add a new task to your list'}
+              {isEditing ? '更新任务细节' : '添加新的任务'}
             </p>
           </div>
           <button
@@ -172,14 +172,14 @@ export const TaskForm: React.FC<TaskFormProps> = ({
             {/* 标题 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Task Title *
+                任务标题
               </label>
               <input
                 type="text"
                 value={formData.title}
                 onChange={(e) => setFormData({...formData, title: e.target.value})}
                 className={`input ${errors.title ? 'border-red-500' : ''}`}
-                placeholder="What needs to be done?"
+                placeholder="做点什么呢？"
                 autoFocus
               />
               {errors.title && (
@@ -190,13 +190,13 @@ export const TaskForm: React.FC<TaskFormProps> = ({
             {/* 描述 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description (Optional)
+                描述
               </label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({...formData, description: e.target.value})}
                 className="input min-h-[100px]"
-                placeholder="Add more details about this task..."
+                placeholder="填入具体细节"
                 rows={3}
               />
             </div>
@@ -206,7 +206,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({
               {/* 优先级 */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Priority
+                  优先级
                 </label>
                 <div className="flex space-x-2">
                   {PRIORITY_OPTIONS.map(option => (
@@ -240,9 +240,9 @@ export const TaskForm: React.FC<TaskFormProps> = ({
                   onChange={(e) => setFormData({...formData, status: e.target.value as Task['status']})}
                   className="input"
                 >
-                  <option value="pending">Pending</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
+                  <option value="pending">暂缓</option>
+                  <option value="in_progress">进行中</option>
+                  <option value="completed">完成</option>
                 </select>
               </div>
             </div>
@@ -274,34 +274,13 @@ export const TaskForm: React.FC<TaskFormProps> = ({
                   <p className="mt-1 text-sm text-red-600">{errors.energy_cost}</p>
                 )}
               </div>
-
-              {/* 预估时间 */}
-              <div>
-                <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
-                  <FaClock className="w-4 h-4 mr-2 text-blue-500" />
-                  Estimated Time (minutes)
-                </label>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="number"
-                    min="1"
-                    value={formData.estimated_time}
-                    onChange={(e) => setFormData({...formData, estimated_time: parseInt(e.target.value) || 0})}
-                    className={`input ${errors.estimated_time ? 'border-red-500' : ''}`}
-                  />
-                  <span className="text-gray-500 whitespace-nowrap">minutes</span>
-                </div>
-                {errors.estimated_time && (
-                  <p className="mt-1 text-sm text-red-600">{errors.estimated_time}</p>
-                )}
-              </div>
             </div>
 
             {/* 截止日期 */}
             <div>
               <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
                 <FaCalendarAlt className="w-4 h-4 mr-2 text-purple-500" />
-                Due Date (Optional)
+                截止日期
               </label>
               <input
                 type="date"
@@ -380,18 +359,11 @@ export const TaskForm: React.FC<TaskFormProps> = ({
           {/* 底部按钮 */}
           <div className="flex justify-end space-x-3 pt-8 mt-8 border-t">
             <button
-              type="button"
-              onClick={onClose}
-              className="btn btn-secondary"
-            >
-              Cancel
-            </button>
-            <button
               type="submit"
               className="btn btn-primary"
               disabled={!formData.title.trim()}
             >
-              {isEditing ? 'Update Task' : 'Create Task'}
+              {isEditing ? '更新任务' : '创建任务'}
             </button>
           </div>
         </form>

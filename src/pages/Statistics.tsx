@@ -14,58 +14,45 @@ import {
   FaArrowUp,
   FaArrowDown
 } from 'react-icons/fa';
+import { api } from '../api';
+import { Task, Mood } from '../types';
 
-interface TaskStat {
-  id: number;
-  title: string;
+// 从真实数据结构定义
+interface TaskStat extends Task {
   completed: boolean;
-  date: string;
-  priority: number;
-  energy_cost?: number;
 }
 
 interface MoodStat {
   date: string;
   mood: 'happy' | 'neutral' | 'sad';
   note: string;
+  mood_score: number;
+  mood_emoji: string;
+  content: string;
 }
 
 export const Statistics: React.FC = () => {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
-  const [taskStats, setTaskStats] = useState<TaskStat[]>([]);
-  const [moodStats, setMoodStats] = useState<MoodStat[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [moods, setMoods] = useState<Mood[]>([]);
+  const [statistics, setStatistics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // 模拟数据加载
+  // 从数据库加载数据
   useEffect(() => {
-    const loadStats = async () => {
+    const loadData = async () => {
       setLoading(true);
       try {
-        // 模拟API调用延迟
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // 模拟任务数据
-        const mockTaskStats: TaskStat[] = [
-          { id: 1, title: '完成报告', completed: true, date: '2024-01-10', priority: 1, energy_cost: 3 },
-          { id: 2, title: '健身', completed: true, date: '2024-01-11', priority: 2, energy_cost: 7 },
-          { id: 3, title: '学习React', completed: false, date: '2024-01-12', priority: 1, energy_cost: 5 },
-          { id: 4, title: '购物', completed: true, date: '2024-01-13', priority: 3, energy_cost: 2 },
-          { id: 5, title: '阅读', completed: false, date: '2024-01-14', priority: 2, energy_cost: 4 },
-          { id: 6, title: '会议', completed: true, date: '2024-01-15', priority: 1, energy_cost: 6 },
-        ];
+        // 并行加载所有数据
+        const [tasksData, moodsData, statsData] = await Promise.all([
+          api.getTasks(),
+          api.getMoods(),
+          api.getStatistics()
+        ]);
 
-        // 模拟心情数据
-        const mockMoodStats: MoodStat[] = [
-          { date: '2024-01-10', mood: 'happy', note: '项目进展顺利' },
-          { date: '2024-01-11', mood: 'neutral', note: '平常的一天' },
-          { date: '2024-01-12', mood: 'sad', note: '遇到一些挑战' },
-          { date: '2024-01-13', mood: 'happy', note: '和朋友聚会' },
-          { date: '2024-01-14', mood: 'neutral', note: '休息日' },
-          { date: '2024-01-15', mood: 'happy', note: '完成重要任务' },
-        ];
-
-        setTaskStats(mockTaskStats);
-        setMoodStats(mockMoodStats);
+        setTasks(tasksData);
+        setMoods(moodsData);
+        setStatistics(statsData);
       } catch (error) {
         console.error('加载统计数据失败:', error);
       } finally {
@@ -73,37 +60,48 @@ export const Statistics: React.FC = () => {
       }
     };
 
-    loadStats();
+    loadData();
   }, [timeRange]);
 
   // 计算统计信息
-  const totalTasks = taskStats.length;
-  const completedTasks = taskStats.filter(task => task.completed).length;
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter(task => task.status === 'completed').length;
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-  const avgEnergy = taskStats.length > 0 
-    ? Math.round(taskStats.reduce((sum, task) => sum + (task.energy_cost || 0), 0) / taskStats.length) 
+  
+  // 计算平均能量消耗
+  const avgEnergy = tasks.length > 0 
+    ? Math.round(tasks.reduce((sum, task) => sum + (task.energy_cost || 0), 0) / tasks.length) 
     : 0;
   
+  // 根据mood_score转换心情类型
+  const getMoodType = (score: number): 'happy' | 'neutral' | 'sad' => {
+    if (score >= 4) return 'happy';
+    if (score >= 3) return 'neutral';
+    return 'sad';
+  };
+
   // 心情分布
-  const moodDistribution = moodStats.reduce((acc, curr) => {
-    acc[curr.mood] = (acc[curr.mood] || 0) + 1;
+  const moodDistribution = moods.reduce((acc, curr) => {
+    const moodType = getMoodType(curr.mood_score);
+    acc[moodType] = (acc[moodType] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
   // 优先级分布
-  const priorityDistribution = taskStats.reduce((acc, curr) => {
+  const priorityDistribution = tasks.reduce((acc, curr) => {
     acc[curr.priority] = (acc[curr.priority] || 0) + 1;
     return acc;
   }, {} as Record<number, number>);
 
   // 任务完成趋势（按日期）
-  const dailyCompletion = taskStats.reduce((acc, task) => {
-    const date = task.date;
+  const dailyCompletion = tasks.reduce((acc, task) => {
+    // 使用created_at的日期部分
+    const date = task.created_at.split('T')[0];
     if (!acc[date]) {
       acc[date] = { total: 0, completed: 0 };
     }
     acc[date].total += 1;
-    if (task.completed) acc[date].completed += 1;
+    if (task.status === 'completed') acc[date].completed += 1;
     return acc;
   }, {} as Record<string, { total: number; completed: number }>);
 
@@ -135,6 +133,71 @@ export const Statistics: React.FC = () => {
       case 3: return '低';
       default: return `优先级 ${priority}`;
     }
+  };
+
+  // 获取最近7天的任务和心情趋势
+  const getRecentTrends = () => {
+    const today = new Date();
+    const recentTasks = tasks.filter(task => {
+      const taskDate = new Date(task.created_at);
+      const diffDays = Math.floor((today.getTime() - taskDate.getTime()) / (1000 * 3600 * 24));
+      return diffDays <= 7;
+    });
+
+    const recentMoods = moods.filter(mood => {
+      const moodDate = new Date(mood.date);
+      const diffDays = Math.floor((today.getTime() - moodDate.getTime()) / (1000 * 3600 * 24));
+      return diffDays <= 7;
+    });
+
+    return { recentTasks, recentMoods };
+  };
+
+  const { recentTasks, recentMoods } = getRecentTrends();
+
+  // 计算趋势变化
+  const calculateTrend = () => {
+    // 这里可以添加更复杂的趋势计算逻辑
+    // 暂时返回固定值
+    return {
+      tasksChange: '+12%',
+      completionChange: '+8%',
+      energyChange: '-3%',
+      moodsChange: '+5%'
+    };
+  };
+
+  const trend = calculateTrend();
+
+  // 找到最高效的一天（完成率最高）
+  const getMostEfficientDay = () => {
+    let maxCompletion = 0;
+    let bestDay = '';
+
+    Object.entries(dailyCompletion).forEach(([date, stats]) => {
+      const rate = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
+      if (rate > maxCompletion) {
+        maxCompletion = rate;
+        bestDay = date;
+      }
+    });
+
+    return bestDay ? {
+      date: bestDay,
+      completed: dailyCompletion[bestDay]?.completed || 0,
+      rate: Math.round(maxCompletion)
+    } : null;
+  };
+
+  // 找到能量消耗最高的任务
+  const getHighestEnergyTask = () => {
+    if (tasks.length === 0) return null;
+    
+    const highestTask = tasks.reduce((max, task) => {
+      return (task.energy_cost || 0) > (max.energy_cost || 0) ? task : max;
+    });
+    
+    return highestTask;
   };
 
   if (loading) {
@@ -192,7 +255,7 @@ export const Statistics: React.FC = () => {
           <div className="mt-4">
             <div className="flex items-center text-sm">
               <FaArrowUp className="w-4 h-4 text-green-500 mr-1" />
-              <span className="text-green-500">+12%</span>
+              <span className="text-green-500">{trend.tasksChange}</span>
               <span className="text-gray-500 ml-2">相比上周</span>
             </div>
           </div>
@@ -211,7 +274,7 @@ export const Statistics: React.FC = () => {
           <div className="mt-4">
             <div className="flex items-center text-sm">
               <FaArrowUp className="w-4 h-4 text-green-500 mr-1" />
-              <span className="text-green-500">+8%</span>
+              <span className="text-green-500">{trend.completionChange}</span>
               <span className="text-gray-500 ml-2">相比上周</span>
             </div>
           </div>
@@ -230,7 +293,7 @@ export const Statistics: React.FC = () => {
           <div className="mt-4">
             <div className="flex items-center text-sm">
               <FaArrowDown className="w-4 h-4 text-red-500 mr-1" />
-              <span className="text-red-500">-3%</span>
+              <span className="text-red-500">{trend.energyChange}</span>
               <span className="text-gray-500 ml-2">相比上周</span>
             </div>
           </div>
@@ -240,7 +303,7 @@ export const Statistics: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm text-gray-600">心情记录</div>
-              <div className="text-3xl font-bold text-gray-900 mt-2">{moodStats.length}</div>
+              <div className="text-3xl font-bold text-gray-900 mt-2">{moods.length}</div>
             </div>
             <div className="p-3 bg-purple-50 rounded-lg">
               <FaChartPie className="w-6 h-6 text-purple-600" />
@@ -249,7 +312,7 @@ export const Statistics: React.FC = () => {
           <div className="mt-4">
             <div className="flex items-center text-sm">
               <FaArrowUp className="w-4 h-4 text-green-500 mr-1" />
-              <span className="text-green-500">+5%</span>
+              <span className="text-green-500">{trend.moodsChange}</span>
               <span className="text-gray-500 ml-2">相比上周</span>
             </div>
           </div>
@@ -278,7 +341,7 @@ export const Statistics: React.FC = () => {
                   </div>
                 </div>
                 <div className="text-lg font-semibold text-gray-900">
-                  {Math.round((count / moodStats.length) * 100)}%
+                  {Math.round((count / moods.length) * 100)}%
                 </div>
               </div>
             ))}
@@ -382,52 +445,55 @@ export const Statistics: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(dailyCompletion).map(([date, stats]) => {
-                  const dayTasks = taskStats.filter(t => t.date === date);
-                  const dayEnergy = dayTasks.length > 0 
-                    ? Math.round(dayTasks.reduce((sum, t) => sum + (t.energy_cost || 0), 0) / dayTasks.length)
-                    : 0;
-                  
-                  return (
-                    <tr key={date} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-4">
-                        <div className="flex items-center">
-                          <FaCalendarAlt className="w-4 h-4 text-gray-400 mr-2" />
-                          <span className="font-medium">{date}</span>
-                        </div>
-                      </td>
-                      <td className="py-4">
-                        <span className="px-3 py-1 bg-gray-100 rounded-full text-sm">
-                          {stats.total}
-                        </span>
-                      </td>
-                      <td className="py-4">
-                        <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                          {stats.completed}
-                        </span>
-                      </td>
-                      <td className="py-4">
-                        <div className="flex items-center">
-                          <div className="w-24 bg-gray-200 rounded-full h-2 mr-3">
-                            <div 
-                              className="h-2 bg-green-500 rounded-full"
-                              style={{ width: `${(stats.completed / stats.total) * 100}%` }}
-                            ></div>
+                {Object.entries(dailyCompletion)
+                  .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+                  .slice(0, 10) // 只显示最近10天
+                  .map(([date, stats]) => {
+                    const dayTasks = tasks.filter(t => t.created_at.startsWith(date));
+                    const dayEnergy = dayTasks.length > 0 
+                      ? Math.round(dayTasks.reduce((sum, t) => sum + (t.energy_cost || 0), 0) / dayTasks.length)
+                      : 0;
+                    
+                    return (
+                      <tr key={date} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-4">
+                          <div className="flex items-center">
+                            <FaCalendarAlt className="w-4 h-4 text-gray-400 mr-2" />
+                            <span className="font-medium">{date}</span>
                           </div>
-                          <span className="font-medium">
-                            {Math.round((stats.completed / stats.total) * 100)}%
+                        </td>
+                        <td className="py-4">
+                          <span className="px-3 py-1 bg-gray-100 rounded-full text-sm">
+                            {stats.total}
                           </span>
-                        </div>
-                      </td>
-                      <td className="py-4">
-                        <div className="flex items-center">
-                          <FaBolt className="w-4 h-4 text-yellow-500 mr-2" />
-                          <span className="font-medium">{dayEnergy} ⚡</span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+                        <td className="py-4">
+                          <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                            {stats.completed}
+                          </span>
+                        </td>
+                        <td className="py-4">
+                          <div className="flex items-center">
+                            <div className="w-24 bg-gray-200 rounded-full h-2 mr-3">
+                              <div 
+                                className="h-2 bg-green-500 rounded-full"
+                                style={{ width: `${(stats.completed / stats.total) * 100}%` }}
+                              ></div>
+                            </div>
+                            <span className="font-medium">
+                              {Math.round((stats.completed / stats.total) * 100)}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-4">
+                          <div className="flex items-center">
+                            <FaBolt className="w-4 h-4 text-yellow-500 mr-2" />
+                            <span className="font-medium">{dayEnergy} ⚡</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
@@ -440,18 +506,38 @@ export const Statistics: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
             <div className="text-sm text-gray-600 mb-1">最高效的一天</div>
-            <div className="text-lg font-bold text-gray-900">1月15日</div>
-            <div className="text-sm text-gray-500">完成了 {dailyCompletion['2024-01-15']?.completed || 0} 个任务</div>
+            {getMostEfficientDay() ? (
+              <>
+                <div className="text-lg font-bold text-gray-900">{getMostEfficientDay()?.date}</div>
+                <div className="text-sm text-gray-500">完成了 {getMostEfficientDay()?.completed} 个任务</div>
+              </>
+            ) : (
+              <div className="text-gray-500">暂无数据</div>
+            )}
           </div>
           <div>
             <div className="text-sm text-gray-600 mb-1">最常见的心情</div>
-            <div className="text-lg font-bold text-gray-900">开心</div>
-            <div className="text-sm text-gray-500">记录 {moodDistribution['happy'] || 0} 次</div>
+            <div className="text-lg font-bold text-gray-900">
+              {Object.keys(moodDistribution).length > 0 
+                ? getMoodLabel(Object.entries(moodDistribution).sort((a, b) => b[1] - a[1])[0][0])
+                : '暂无数据'}
+            </div>
+            <div className="text-sm text-gray-500">
+              {Object.keys(moodDistribution).length > 0 
+                ? `记录 ${Object.entries(moodDistribution).sort((a, b) => b[1] - a[1])[0][1]} 次`
+                : ''}
+            </div>
           </div>
           <div>
             <div className="text-sm text-gray-600 mb-1">能量最高任务</div>
-            <div className="text-lg font-bold text-gray-900">健身</div>
-            <div className="text-sm text-gray-500">消耗 7 ⚡ 能量</div>
+            {getHighestEnergyTask() ? (
+              <>
+                <div className="text-lg font-bold text-gray-900">{getHighestEnergyTask()?.title}</div>
+                <div className="text-sm text-gray-500">消耗 {getHighestEnergyTask()?.energy_cost || 0} ⚡ 能量</div>
+              </>
+            ) : (
+              <div className="text-gray-500">暂无数据</div>
+            )}
           </div>
         </div>
       </div>

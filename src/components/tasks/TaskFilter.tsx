@@ -44,33 +44,33 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const filterOptions = [
-    { id: 'all', label: 'All Tasks', icon: <FaFilter className="w-4 h-4" /> },
-    { id: 'today', label: 'Today', icon: <FaCalendar className="w-4 h-4" /> },
-    { id: 'pending', label: 'Pending', icon: <FaClock className="w-4 h-4" /> },
-    { id: 'completed', label: 'Completed', icon: <FaCheck className="w-4 h-4" /> },
-    { id: 'high_energy', label: 'High Energy', icon: <FaFire className="w-4 h-4" /> },
+    { id: 'all', label: '展示所有', icon: <FaFilter className="w-4 h-4" /> },
+    { id: 'today', label: '今日的', icon: <FaCalendar className="w-4 h-4" /> },
+    { id: 'pending', label: '未完成', icon: <FaClock className="w-4 h-4" /> },
+    { id: 'completed', label: '已完成', icon: <FaCheck className="w-4 h-4" /> },
+    { id: 'high_energy', label: '高能量', icon: <FaFire className="w-4 h-4" /> },
   ];
 
   const sortOptions = [
-    { id: 'priority_asc', label: 'Priority (High to Low)', icon: <FaSortAmountDown className="w-4 h-4" /> },
-    { id: 'priority_desc', label: 'Priority (Low to High)', icon: <FaSortAmountUp className="w-4 h-4" /> },
-    { id: 'due_date', label: 'Due Date', icon: <FaCalendar className="w-4 h-4" /> },
-    { id: 'energy', label: 'Energy Cost', icon: <FaFire className="w-4 h-4" /> },
-    { id: 'created', label: 'Created Date', icon: <FaSortAmountDown className="w-4 h-4" /> },
+    { id: 'priority_asc', label: '优先级（高到低）', icon: <FaSortAmountDown className="w-4 h-4" /> },
+    { id: 'priority_desc', label: '优先级（低到高）', icon: <FaSortAmountUp className="w-4 h-4" /> },
+    { id: 'due_date', label: '截止日期', icon: <FaCalendar className="w-4 h-4" /> },
+    { id: 'energy', label: '能量消耗', icon: <FaFire className="w-4 h-4" /> },
+    { id: 'created', label: '创建日期', icon: <FaSortAmountDown className="w-4 h-4" /> },
   ];
 
   const priorityOptions = [
-    { id: null, label: 'All Priorities', color: 'bg-gray-200 text-gray-800' },
-    { id: 1, label: 'High', color: 'bg-red-100 text-red-800' },
-    { id: 2, label: 'Medium', color: 'bg-yellow-100 text-yellow-800' },
-    { id: 3, label: 'Low', color: 'bg-blue-100 text-blue-800' },
+    { id: null, label: '全部优先级', color: 'bg-gray-200 text-gray-800' },
+    { id: 1, label: '高', color: 'bg-red-100 text-red-800' },
+    { id: 2, label: '中', color: 'bg-yellow-100 text-yellow-800' },
+    { id: 3, label: '低', color: 'bg-blue-100 text-blue-800' },
   ];
 
   const energyRanges = [
-    { id: 'all', label: 'All', min: 1, max: 10 },
-    { id: 'low', label: 'Low (1-3)', min: 1, max: 3 },
-    { id: 'medium', label: 'Medium (4-7)', min: 4, max: 7 },
-    { id: 'high', label: 'High (8-10)', min: 8, max: 10 },
+    { id: 'all', label: '全部', min: 1, max: 10 },
+    { id: 'low', label: '低（1-3）', min: 1, max: 3 },
+    { id: 'medium', label: '中（4-7）', min: 4, max: 7 },
+    { id: 'high', label: '高（8-10）', min: 8, max: 10 },
   ];
 
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
@@ -80,16 +80,16 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
       {/* 顶部统计信息 */}
       <div className="flex flex-wrap items-center justify-between mb-6">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Task Overview</h3>
+          <h3 className="text-lg font-semibold text-gray-900">任务线</h3>
           <div className="flex items-center space-x-4 mt-2">
             <div className="text-sm text-gray-600">
-              <span className="font-medium">{totalTasks}</span> total tasks
+              <span className="font-medium">{totalTasks}</span> 任务数
             </div>
             <div className="text-sm text-green-600">
-              <span className="font-medium">{completedTasks}</span> completed
+              <span className="font-medium">{completedTasks}</span> 已完成！
             </div>
             <div className="text-sm text-blue-600">
-              <span className="font-medium">{completionRate}%</span> completion rate
+              <span className="font-medium">{completionRate}%</span> 完成率
             </div>
           </div>
         </div>
@@ -100,7 +100,7 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
           type="button"
         >
           <FaFilter className="w-4 h-4 mr-1" />
-          {showAdvanced ? 'Hide Advanced' : 'Show Advanced'}
+          {showAdvanced ? '收起' : '展开'}
         </button>
       </div>
 
@@ -108,7 +108,7 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
       <div className="mb-6">
         <div className="flex items-center mb-3">
           <FaFilter className="w-4 h-4 text-gray-500 mr-2" />
-          <span className="text-sm font-medium text-gray-700">Quick Filters</span>
+          <span className="text-sm font-medium text-gray-700">筛选</span>
         </div>
         <div className="flex flex-wrap gap-2">
           {filterOptions.map(option => (
@@ -218,7 +218,7 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
       {/* 当前筛选状态 */}
       <div className="mt-6 pt-6 border-t">
         <div className="text-sm text-gray-600">
-          <span className="font-medium">Active filters:</span>{' '}
+          <span className="font-medium">正在显示：</span>{' '}
           {activeFilter !== 'all' && (
             <span className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs ml-2">
               {filterOptions.find(f => f.id === activeFilter)?.label}
