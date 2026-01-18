@@ -1,6 +1,6 @@
 // src/database.rs
 use serde::{Deserialize, Serialize};
-use rusqlite::Row; // 移除了未使用的 params 导入
+use rusqlite::Row;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use tauri::Manager;
@@ -35,7 +35,7 @@ fn init_tables(pool: &DbPool) -> Result<(), String> {
     let conn = pool.get()
         .map_err(|e: r2d2::Error| format!("获取连接失败: {}", e))?;
     
-    // 任务表
+    // 任务表 - 添加习惯任务字段
     conn.execute(
         "CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,7 +49,13 @@ fn init_tables(pool: &DbPool) -> Result<(), String> {
             due_date TEXT,
             completed_at TEXT,
             tags TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            -- 新增习惯任务字段
+            is_habit BOOLEAN DEFAULT 0,
+            habit_period TEXT CHECK(habit_period IN ('daily', 'weekdays', 'weekends', 'custom')),
+            habit_completions TEXT, -- JSON格式存储完成记录
+            habit_start_date TEXT,
+            habit_end_date TEXT
         )",
         [],
     ).map_err(|e: rusqlite::Error| format!("创建任务表失败: {}", e))?;
@@ -75,6 +81,11 @@ fn init_tables(pool: &DbPool) -> Result<(), String> {
     ).map_err(|e: rusqlite::Error| format!("创建索引失败: {}", e))?;
     
     conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_is_habit ON tasks(is_habit)",
+        [],
+    ).map_err(|e: rusqlite::Error| format!("创建索引失败: {}", e))?;
+    
+    conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_moods_date ON moods(date DESC)",
         [],
     ).map_err(|e: rusqlite::Error| format!("创建索引失败: {}", e))?;
@@ -82,7 +93,7 @@ fn init_tables(pool: &DbPool) -> Result<(), String> {
     Ok(())
 }
 
-// 原有的结构体保持不变
+// 任务结构体 - 添加习惯任务字段
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Task {
     pub id: i64,
@@ -97,8 +108,15 @@ pub struct Task {
     pub completed_at: Option<String>,
     pub tags: Option<String>,
     pub created_at: String,
+    // 新增习惯任务字段
+    pub is_habit: Option<bool>,
+    pub habit_period: Option<String>,
+    pub habit_completions: Option<String>, // JSON字符串存储完成记录
+    pub habit_start_date: Option<String>,
+    pub habit_end_date: Option<String>,
 }
 
+// 心情结构体
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Mood {
     pub id: i64,
@@ -110,7 +128,7 @@ pub struct Mood {
     pub created_at: String,
 }
 
-// 用于创建任务的数据结构
+// 用于创建任务的数据结构 - 添加习惯任务字段
 #[derive(Debug, Deserialize)]
 pub struct CreateTask {
     pub title: String,
@@ -122,6 +140,12 @@ pub struct CreateTask {
     pub actual_time: Option<i64>,
     pub due_date: Option<String>,
     pub tags: Option<String>,
+    // 新增习惯任务字段
+    pub is_habit: Option<bool>,
+    pub habit_period: Option<String>,
+    pub habit_completions: Option<String>,
+    pub habit_start_date: Option<String>,
+    pub habit_end_date: Option<String>,
 }
 
 // 用于创建心情的数据结构
@@ -132,6 +156,15 @@ pub struct CreateMood {
     pub mood_emoji: String,
     pub content: String,
     pub tags: Option<String>,
+}
+
+// 习惯完成记录
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HabitCompletion {
+    pub date: String,
+    pub completed_at: String,
+    pub status: String, // 'completed' or 'skipped'
+    pub note: Option<String>,
 }
 
 // 数据库行到结构体的转换
@@ -150,6 +183,12 @@ impl Task {
             completed_at: row.get(9)?,
             tags: row.get(10)?,
             created_at: row.get(11)?,
+            // 新增字段
+            is_habit: row.get(12).unwrap_or(Some(false)),
+            habit_period: row.get(13)?,
+            habit_completions: row.get(14)?,
+            habit_start_date: row.get(15)?,
+            habit_end_date: row.get(16)?,
         })
     }
 }

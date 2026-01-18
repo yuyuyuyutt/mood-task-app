@@ -141,7 +141,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                     const item = navigationItems.find(item => 
                       isActive(item.path, item.exact)
                     );
-                    if (item?.label === '任务管理') return '高效管理您的日常任务';
+                    if (item?.label === '任务列表') return '高效管理您的日常任务';
                     if (item?.label === '心情日记') return '记录您的情绪与思考';
                     if (item?.label === '数据统计') return '查看您的生产力分析';
                     if (item?.label === '系统设置') return '个性化您的应用体验';

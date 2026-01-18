@@ -5,9 +5,12 @@ import { TaskList } from './pages/TaskList';
 import { MoodDiary } from './pages/MoodDiary';
 import { Statistics } from './pages/Statistics';
 import { Settings } from './pages/Settings';
+import { useTheme } from './hooks/useTheme';
 import './styles.css';
 
 function App() {
+  useTheme();
+
   return (
     <Router>
       <Layout>

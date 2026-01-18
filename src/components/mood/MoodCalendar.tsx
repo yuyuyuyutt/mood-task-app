@@ -19,11 +19,11 @@ const MOOD_EMOJI_MAP: Record<number, string> = {
 };
 
 const MOOD_COLOR_MAP: Record<number, string> = {
-  1: 'bg-red-500',
-  2: 'bg-yellow-500',
-  3: 'bg-gray-400',
-  4: 'bg-blue-400',
-  5: 'bg-green-500',
+  1: 'bg-red-500 dark:bg-red-600',
+  2: 'bg-yellow-500 dark:bg-yellow-600',
+  3: 'bg-gray-400 dark:bg-gray-500',
+  4: 'bg-blue-400 dark:bg-blue-500',
+  5: 'bg-green-500 dark:bg-green-600',
 };
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -111,9 +111,9 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
   }, [monthEntries]);
 
   const getMoodClass = (moodScore?: number): string => {
-    if (!moodScore) return 'bg-gray-100 hover:bg-gray-200';
+    if (!moodScore) return 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700';
     
-    const colorClass = MOOD_COLOR_MAP[moodScore] || 'bg-gray-400';
+    const colorClass = MOOD_COLOR_MAP[moodScore] || 'bg-gray-400 dark:bg-gray-500';
     return `${colorClass} text-white hover:opacity-90`;
   };
 
@@ -131,38 +131,38 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
   ];
 
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6">
+    <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm p-6">
       {/* 日历头部 */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center">
-          <FaCalendarAlt className="w-5 h-5 text-gray-500 mr-2" />
-          <h2 className="text-xl font-semibold text-gray-900">日期</h2>
+          <FaCalendarAlt className="w-5 h-5 text-gray-500 dark:text-gray-400 mr-2" />
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">日期</h2>
         </div>
         
         <div className="flex items-center space-x-4">
           <button
             onClick={handlePrevMonth}
-            className="p-2 hover:bg-gray-100 rounded-lg"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
             type="button"
           >
-            <FaChevronLeft className="w-5 h-5" />
+            <FaChevronLeft className="w-5 h-5 text-gray-700 dark:text-gray-300" />
           </button>
           
-          <div className="text-lg font-semibold">
+          <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             {format(currentMonth, 'MMMM yyyy')}
           </div>
           
           <button
             onClick={handleNextMonth}
-            className="p-2 hover:bg-gray-100 rounded-lg"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
             type="button"
           >
-            <FaChevronRight className="w-5 h-5" />
+            <FaChevronRight className="w-5 h-5 text-gray-700 dark:text-gray-300" />
           </button>
           
           <button
             onClick={handleToday}
-            className="px-4 py-2 text-sm bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100"
+            className="px-4 py-2 text-sm bg-primary-50 dark:bg-blue-900/30 text-primary-600 dark:text-blue-300 rounded-lg hover:bg-primary-100 dark:hover:bg-blue-900/50"
             type="button"
           >
             Today
@@ -173,20 +173,20 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
       {/* 月份统计 */}
       {monthEntries.length > 0 && (
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm text-gray-600 mb-1">Average Mood</div>
-            <div className="text-2xl font-bold text-gray-900">
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Average Mood</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {moodStats.average.toFixed(1)}/5
             </div>
-            <div className="text-sm text-gray-500 mt-1">
+            <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {monthEntries.length} days tracked
             </div>
           </div>
           
           {moodStats.bestDay && (
-            <div className="bg-green-50 rounded-lg p-4">
-              <div className="text-sm text-green-600 mb-1">Best Day</div>
-              <div className="text-lg font-semibold text-green-800">
+            <div className="bg-green-50 dark:bg-green-900/30 rounded-lg p-4">
+              <div className="text-sm text-green-600 dark:text-green-400 mb-1">Best Day</div>
+              <div className="text-lg font-semibold text-green-800 dark:text-green-300">
                 {format(parseISO(moodStats.bestDay), 'MMM d')}
               </div>
               <div className="text-2xl mt-1">
@@ -196,9 +196,9 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
           )}
           
           {moodStats.worstDay && (
-            <div className="bg-red-50 rounded-lg p-4">
-              <div className="text-sm text-red-600 mb-1">Worst Day</div>
-              <div className="text-lg font-semibold text-red-800">
+            <div className="bg-red-50 dark:bg-red-900/30 rounded-lg p-4">
+              <div className="text-sm text-red-600 dark:text-red-400 mb-1">Worst Day</div>
+              <div className="text-lg font-semibold text-red-800 dark:text-red-300">
                 {format(parseISO(moodStats.worstDay), 'MMM d')}
               </div>
               <div className="text-2xl mt-1">
@@ -212,7 +212,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
       {/* 星期标题 */}
       <div className="grid grid-cols-7 gap-1 mb-2">
         {DAYS_OF_WEEK.map(day => (
-          <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
+          <div key={day} className="text-center text-sm font-medium text-gray-500 dark:text-gray-400 py-2">
             {day}
           </div>
         ))}
@@ -238,15 +238,15 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
                 h-12 flex flex-col items-center justify-center rounded-lg
                 transition-all duration-200 relative
                 ${getMoodClass(moodScore)}
-                ${isSelected ? 'ring-2 ring-primary-500 ring-offset-2' : ''}
-                ${isToday && !moodEntry ? 'border-2 border-primary-500' : ''}
+                ${isSelected ? 'ring-2 ring-primary-500 ring-offset-2 dark:ring-offset-gray-900' : ''}
+                ${isToday && !moodEntry ? 'border-2 border-primary-500 dark:border-primary-400' : ''}
               `}
               title={moodEntry ? `${format(date, 'MMM d')}: ${getMoodLabel(moodScore)}` : format(date, 'MMM d')}
               type="button"
             >
               <div className={`
                 text-sm font-medium
-                ${moodScore ? 'text-white' : 'text-gray-700'}
+                ${moodScore ? 'text-white dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'}
                 ${isToday ? 'font-bold' : ''}
               `}>
                 {format(date, 'd')}
@@ -259,7 +259,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
               )}
               
               {isToday && !moodEntry && (
-                <div className="absolute -top-1 -right-1 w-2 h-2 bg-primary-500 rounded-full"></div>
+                <div className="absolute -top-1 -right-1 w-2 h-2 bg-primary-500 dark:bg-primary-400 rounded-full"></div>
               )}
             </button>
           );
@@ -268,8 +268,8 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
 
       {/* 月份记录总结 */}
       {monthEntries.length > 0 && (
-        <div className="mt-6 pt-6 border-t">
-          <div className="text-sm font-medium text-gray-700 mb-3">
+        <div className="mt-6 pt-6 border-t dark:border-gray-700">
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
             {format(currentMonth, 'MMMM')} Summary
           </div>
           <div className="space-y-2">
@@ -279,15 +279,15 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
               .map(entry => (
                 <div
                   key={entry.id}
-                  className="flex items-center p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
+                  className="flex items-center p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg cursor-pointer"
                   onClick={() => onDateSelect(entry.date)}
                 >
                   <div className="text-2xl mr-3">{entry.mood_emoji}</div>
                   <div className="flex-1">
-                    <div className="font-medium text-gray-900">
+                    <div className="font-medium text-gray-900 dark:text-gray-100">
                       {format(parseISO(entry.date), 'MMMM d')}
                     </div>
-                    <div className="text-sm text-gray-600 truncate">
+                    <div className="text-sm text-gray-600 dark:text-gray-400 truncate">
                       {entry.content.substring(0, 60)}...
                     </div>
                   </div>

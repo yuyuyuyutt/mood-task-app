@@ -19,11 +19,11 @@ interface MoodEntryFormProps {
 }
 
 const DEFAULT_MOOD_OPTIONS: MoodOption[] = [
-  { emoji: '😊', score: 5, label: '漂亮的一天', color: 'bg-green-100 text-green-800' },
-  { emoji: '🙂', score: 4, label: '还行', color: 'bg-blue-100 text-blue-800' },
-  { emoji: '😐', score: 3, label: '一般', color: 'bg-gray-100 text-gray-800' },
-  { emoji: '😔', score: 2, label: '不开心', color: 'bg-yellow-100 text-yellow-800' },
-  { emoji: '😢', score: 1, label: '糟糕透了', color: 'bg-red-100 text-red-800' },
+  { emoji: '😊', score: 5, label: '漂亮的一天', color: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' },
+  { emoji: '🙂', score: 4, label: '还行', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' },
+  { emoji: '😐', score: 3, label: '一般', color: 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300' },
+  { emoji: '😔', score: 2, label: '不开心', color: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300' },
+  { emoji: '😢', score: 1, label: '糟糕透了', color: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' },
 ];
 
 const TAG_OPTIONS = [
@@ -122,12 +122,12 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
   const selectedMoodOption = getMoodOption(formData.mood_score);
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm p-6">
+    <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-900 rounded-xl shadow-sm p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           {stableExistingEntry ? '这天怎么了' : '我在听哦'}
         </h2>
-        <div className="flex items-center text-sm text-gray-600">
+        <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
           <FaCalendarAlt className="w-4 h-4 mr-1" />
           <span>{format(new Date(formData.date), 'EEEE, MMMM d, yyyy')}</span>
         </div>
@@ -135,7 +135,7 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
 
       {/* Mood Selection */}
       <div className="mb-8">
-        <label className="block text-sm font-medium text-gray-700 mb-4">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
           今天怎么样呢，我的朋友
         </label>
         <div className="grid grid-cols-5 gap-2">
@@ -147,8 +147,8 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
               className={`
                 flex flex-col items-center p-3 rounded-lg transition-all duration-200
                 ${formData.mood_score === option.score
-                  ? 'ring-2 ring-primary-500 transform scale-105'
-                  : 'hover:bg-gray-50'
+                  ? 'ring-2 ring-primary-500 dark:ring-blue-500 transform scale-105'
+                  : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                 }
               `}
             >
@@ -163,14 +163,14 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
 
       {/* Content */}
       <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-3">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
           发生了什么呢
-          <span className="ml-2 text-xs text-gray-500">
+          <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
             {contentLength}/500
           </span>
         </label>
         <textarea
-          className="input min-h-[120px] resize-none"
+          className="input min-h-[120px] resize-none dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"
           placeholder="和我说说吧，我的朋友"
           value={formData.content}
           onChange={handleContentChange}
@@ -181,24 +181,24 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
       {/* Tags */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
-          <label className="flex items-center text-sm font-medium text-gray-700">
+          <label className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
             <FaTag className="w-4 h-4 mr-1" />
             Tags (Optional)
           </label>
-          <span className="text-xs text-gray-500">Add up to 5 tags</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">Add up to 5 tags</span>
         </div>
         
         <div className="flex flex-wrap gap-2 mb-4">
           {formData.tags.map(tag => (
             <span
               key={tag}
-              className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-primary-100 text-primary-800"
+              className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-primary-100 dark:bg-blue-900/30 text-primary-800 dark:text-blue-300"
             >
               {tag}
               <button
                 type="button"
                 onClick={() => handleRemoveTag(tag)}
-                className="ml-2 text-primary-600 hover:text-primary-800"
+                className="ml-2 text-primary-600 dark:text-blue-400 hover:text-primary-800 dark:hover:text-blue-200"
               >
                 ×
               </button>
@@ -209,7 +209,7 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
         {formData.tags.length < 5 && (
           <div className="flex gap-2">
             <select
-              className="flex-1 input"
+              className="flex-1 input dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"
               value={selectedTag}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedTag(e.target.value)}
             >
@@ -234,7 +234,7 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
       </div>
 
       {/* Actions */}
-      <div className="flex justify-end space-x-3 pt-6 border-t">
+      <div className="flex justify-end space-x-3 pt-6 border-t dark:border-gray-700">
         {onCancel && (
           <button
             type="button"

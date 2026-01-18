@@ -2,8 +2,18 @@
 mod database;
 mod commands;
 
-use tauri::Manager; // 添加这行导入
-use commands::{AppState, get_tasks, create_task, update_task, delete_task, get_moods, save_mood, delete_mood};
+use tauri::Manager;
+use commands::{
+    AppState, 
+    get_tasks, 
+    create_task, 
+    update_task, 
+    delete_task, 
+    update_habit_completion, // 新增习惯完成更新
+    get_moods, 
+    save_mood, 
+    delete_mood
+};
 
 fn main() {
     tauri::Builder::default()
@@ -29,6 +39,7 @@ fn main() {
             create_task,
             update_task,
             delete_task,
+            update_habit_completion, // 注册习惯完成更新命令
             get_moods,
             save_mood,
             delete_mood,

@@ -48,7 +48,7 @@ export const MoodDiary: React.FC = () => {
     return (
       <div className="max-w-6xl mx-auto p-6">
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-500">Loading mood entries...</div>
+          <div className="text-gray-500 dark:text-gray-400">Loading mood entries...</div>
         </div>
       </div>
     );
@@ -96,13 +96,13 @@ export const MoodDiary: React.FC = () => {
               onCancel={() => setShowForm(false)}
             />
           ) : (
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm p-6">
               <div className="text-center py-12">
                 <div className="text-4xl mb-4">📝</div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
                   未选择记录
                 </h3>
-                <p className="text-gray-600 mb-6">
+                <p className="text-gray-600 dark:text-gray-400 mb-6">
                   在日历中选择日期以查看或创建心情记录
                 </p>
                 <button
@@ -116,16 +116,16 @@ export const MoodDiary: React.FC = () => {
           )}
 
           {/* 近期记录 */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 近期记录
               </h3>
-              <FaCalendarAlt className="w-5 h-5 text-gray-500" />
+              <FaCalendarAlt className="w-5 h-5 text-gray-500 dark:text-gray-400" />
             </div>
             
             {moodEntries.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                 还没有心情记录，开始记录吧！
               </div>
             ) : (
@@ -136,8 +136,10 @@ export const MoodDiary: React.FC = () => {
                   .map(entry => (
                     <div
                       key={entry.id}
-                      className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
-                        entry.date === selectedDate ? 'border-primary-500 bg-primary-50' : 'border-gray-200'
+                      className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md dark:hover:bg-gray-800 ${
+                        entry.date === selectedDate 
+                          ? 'border-primary-500 bg-primary-50 dark:bg-blue-900/30 dark:border-blue-500' 
+                          : 'border-gray-200 dark:border-gray-700'
                       }`}
                       onClick={() => {
                         setSelectedDate(entry.date);
@@ -147,15 +149,15 @@ export const MoodDiary: React.FC = () => {
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center">
                           <span className="text-2xl mr-3">{entry.mood_emoji}</span>
-                          <span className="font-medium text-gray-900">
+                          <span className="font-medium text-gray-900 dark:text-gray-100">
                             {format(new Date(entry.date), 'MM月d日')}
                           </span>
                         </div>
-                        <span className="text-sm text-gray-500">
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
                           {entry.mood_score}/5
                         </span>
                       </div>
-                      <p className="text-gray-700 text-sm line-clamp-2">
+                      <p className="text-gray-700 dark:text-gray-300 text-sm line-clamp-2">
                         {entry.content}
                       </p>
                       {entry.tags && entry.tags.length > 0 && (
@@ -163,7 +165,7 @@ export const MoodDiary: React.FC = () => {
                           {entry.tags.slice(0, 3).map(tag => (
                             <span
                               key={tag}
-                              className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded"
+                              className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded"
                             >
                               {tag}
                             </span>
@@ -180,7 +182,7 @@ export const MoodDiary: React.FC = () => {
                 onClick={() => {
                   alert('查看所有记录 - 待实现');
                 }}
-                className="w-full mt-4 py-2 text-sm text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg"
+                className="w-full mt-4 py-2 text-sm text-primary-600 dark:text-blue-400 hover:text-primary-700 dark:hover:text-blue-300 hover:bg-primary-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
               >
                 查看所有记录 →
               </button>

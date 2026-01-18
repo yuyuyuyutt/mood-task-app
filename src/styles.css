@@ -1,4 +1,13 @@
 :root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --bg-tertiary: #f3f4f6;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+  --border-color: #e5e7eb;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+
   --primary-50: #eff6ff;
   --primary-100: #dbeafe;
   --primary-200: #bfdbfe;
@@ -444,4 +453,273 @@
   .lg\:translate-x-0 { transform: translateX(0); }
   .lg\:static { position: static; }
   .lg\:inset-auto { top: auto; right: auto; bottom: auto; left: auto; }
+}
+
+/* 暗色主题 */
+.dark {
+  --bg-primary: #111827;
+  --bg-secondary: #1f2937;
+  --bg-tertiary: #374151;
+  --text-primary: #f9fafb;
+  --text-secondary: #d1d5db;
+  --text-tertiary: #9ca3af;
+  --border-color: #4b5563;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+}
+
+/* 添加全局样式使用新的主题变量 */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* 更新按钮样式使用主题变量 */
+button {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+button:hover {
+  background-color: var(--bg-secondary);
+}
+
+/* 更新输入框样式 */
+.input {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.input:focus {
+  border-color: var(--primary-500);
+}
+
+/* 更新卡片样式 */
+.bg-white {
+  background-color: var(--bg-primary) !important;
+}
+
+.text-gray-900 {
+  color: var(--text-primary) !important;
+}
+
+.text-gray-600 {
+  color: var(--text-secondary) !important;
+}
+
+.text-gray-500 {
+  color: var(--text-tertiary) !important;
+}
+
+.border-gray-200 {
+  border-color: var(--border-color) !important;
+}
+
+.bg-gray-50 {
+  background-color: var(--bg-secondary) !important;
+}
+
+.bg-gray-100 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+/* 暗色主题下的特定调整 */
+.dark .logo.vite:hover {
+  filter: drop-shadow(0 0 2em #747bff);
+}
+
+.dark .logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafb);
+}
+
+.dark .logo.tauri:hover {
+  filter: drop-shadow(0 0 2em #24c8db);
+}
+
+.dark .bg-white {
+  background-color: var(--bg-primary) !important;
+}
+
+.dark .bg-gray-50 {
+  background-color: var(--bg-secondary) !important;
+}
+
+.dark .bg-gray-100 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.dark .text-gray-900 {
+  color: var(--text-primary) !important;
+}
+
+.dark .text-gray-700 {
+  color: var(--text-secondary) !important;
+}
+
+.dark .text-gray-600 {
+  color: var(--text-tertiary) !important;
+}
+
+.dark .text-gray-500 {
+  color: var(--text-tertiary) !important;
+}
+
+.dark .border-gray-200 {
+  border-color: var(--border-color) !important;
+}
+
+.dark .border-t {
+  border-top-color: var(--border-color) !important;
+}
+
+.dark .ring-primary-500 {
+  box-shadow: 0 0 0 2px var(--primary-500) !important;
+}
+
+.dark .bg-primary-50 {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+.dark .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+.dark .bg-green-50 {
+  background-color: rgba(34, 197, 94, 0.1) !important;
+}
+
+.dark .text-red-800 {
+  color: #fca5a5 !important;
+}
+
+.dark .text-green-800 {
+  color: #86efac !important;
+}
+
+.dark .text-red-600 {
+  color: #f87171 !important;
+}
+
+.dark .text-green-600 {
+  color: #4ade80 !important;
+}
+
+.dark .text-primary-600 {
+  color: #60a5fa !important;
+}
+
+.dark .text-primary-800 {
+  color: #93c5fd !important;
+}
+
+.dark .hover\:bg-gray-100:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.dark .hover\:bg-primary-100:hover {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+.dark .hover\:bg-gray-50:hover {
+  background-color: var(--bg-secondary) !important;
+}
+
+/* 日历中使用的特定颜色覆盖 */
+.dark .bg-red-500 {
+  background-color: #ef4444 !important;
+}
+
+.dark .bg-yellow-500 {
+  background-color: #eab308 !important;
+}
+
+.dark .bg-gray-400 {
+  background-color: #9ca3af !important;
+}
+
+.dark .bg-blue-400 {
+  background-color: #60a5fa !important;
+}
+
+.dark .bg-green-500 {
+  background-color: #22c55e !important;
+}
+
+.dark .ring-offset-2 {
+  --tw-ring-offset-color: var(--bg-primary) !important;
+}
+
+/* 输入框和按钮的暗色主题样式 */
+.dark .input {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.dark .input:focus {
+  border-color: var(--primary-500) !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+}
+
+.dark .btn-secondary {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.dark .btn-secondary:hover {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.dark .btn-primary {
+  background-color: var(--primary-600) !important;
+  color: white !important;
+}
+
+.dark .btn-primary:hover {
+  background-color: var(--primary-700) !important;
+}
+
+/* 心情选项的颜色 */
+.dark .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.2) !important;
+}
+
+.dark .bg-yellow-100 {
+  background-color: rgba(234, 179, 8, 0.2) !important;
+}
+
+.dark .bg-gray-100 {
+  background-color: rgba(156, 163, 175, 0.2) !important;
+}
+
+.dark .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+.dark .bg-green-100 {
+  background-color: rgba(34, 197, 94, 0.2) !important;
+}
+
+.dark .text-red-800 {
+  color: #fca5a5 !important;
+}
+
+.dark .text-yellow-800 {
+  color: #fde047 !important;
+}
+
+.dark .text-gray-800 {
+  color: #d1d5db !important;
+}
+
+.dark .text-blue-800 {
+  color: #93c5fd !important;
+}
+
+.dark .text-green-800 {
+  color: #86efac !important;
 }

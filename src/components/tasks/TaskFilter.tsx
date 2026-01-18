@@ -1,19 +1,27 @@
 //src/components/tasks/TaskFilter.tsx
 import React, { useState } from 'react';
-import { FaFilter, FaCalendar, FaCheck, FaClock, FaFire, FaSortAmountDown, FaSortAmountUp } from 'react-icons/fa';
+import { 
+  FaFilter, 
+  FaCalendar, 
+  FaCheck, 
+  FaClock, 
+  FaFire, 
+  FaSortAmountDown, 
+  FaSortAmountUp,
+  FaHistory,
+  FaStar
+} from 'react-icons/fa';
 
 interface FilterOption {
   id: string;
   label: string;
   icon: React.ReactNode;
-  filterFn: (tasks: any[]) => any[];
 }
 
 interface SortOption {
   id: string;
   label: string;
   icon: React.ReactNode;
-  sortFn: (a: any, b: any) => number;
 }
 
 interface TaskFilterProps {
@@ -21,10 +29,12 @@ interface TaskFilterProps {
   onSortChange: (sort: string) => void;
   onPriorityFilterChange?: (priority: number | null) => void;
   onEnergyFilterChange?: (min: number, max: number) => void;
+  onHabitFilterChange?: (showHabits: boolean | null) => void;
   activeFilter: string;
   activeSort: string;
   activePriority?: number | null;
   activeEnergyRange?: { min: number; max: number };
+  activeHabitFilter?: boolean | null;
   totalTasks: number;
   completedTasks: number;
 }
@@ -34,10 +44,12 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
   onSortChange,
   onPriorityFilterChange,
   onEnergyFilterChange,
+  onHabitFilterChange,
   activeFilter,
   activeSort,
   activePriority,
   activeEnergyRange,
+  activeHabitFilter,
   totalTasks,
   completedTasks
 }) => {
@@ -48,6 +60,7 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
     { id: 'today', label: '今日的', icon: <FaCalendar className="w-4 h-4" /> },
     { id: 'pending', label: '未完成', icon: <FaClock className="w-4 h-4" /> },
     { id: 'completed', label: '已完成', icon: <FaCheck className="w-4 h-4" /> },
+    { id: 'habits', label: '习惯任务', icon: <FaHistory className="w-4 h-4" /> },
     { id: 'high_energy', label: '高能量', icon: <FaFire className="w-4 h-4" /> },
   ];
 
@@ -57,6 +70,7 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
     { id: 'due_date', label: '截止日期', icon: <FaCalendar className="w-4 h-4" /> },
     { id: 'energy', label: '能量消耗', icon: <FaFire className="w-4 h-4" /> },
     { id: 'created', label: '创建日期', icon: <FaSortAmountDown className="w-4 h-4" /> },
+    { id: 'habit', label: '习惯任务优先', icon: <FaHistory className="w-4 h-4" /> },
   ];
 
   const priorityOptions = [
@@ -73,6 +87,12 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
     { id: 'high', label: '高（8-10）', min: 8, max: 10 },
   ];
 
+  const habitOptions = [
+    { id: null, label: '全部任务', icon: <FaFilter className="w-4 h-4" /> },
+    { id: true, label: '仅习惯任务', icon: <FaHistory className="w-4 h-4" /> },
+    { id: false, label: '仅普通任务', icon: <FaStar className="w-4 h-4" /> },
+  ];
+
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   return (
@@ -80,27 +100,19 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
       {/* 顶部统计信息 */}
       <div className="flex flex-wrap items-center justify-between mb-6">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">任务线</h3>
-          <div className="flex items-center space-x-4 mt-2">
-            <div className="text-sm text-gray-600">
-              <span className="font-medium">{totalTasks}</span> 任务数
-            </div>
-            <div className="text-sm text-green-600">
-              <span className="font-medium">{completedTasks}</span> 已完成！
-            </div>
-            <div className="text-sm text-blue-600">
-              <span className="font-medium">{completionRate}%</span> 完成率
-            </div>
+          <div className="text-sm text-gray-600">任务统计</div>
+          <div className="text-2xl font-bold text-gray-900">{totalTasks} 个任务</div>
+          <div className="text-sm text-gray-600 mt-1">
+            完成率: <span className="font-medium text-green-600">{completionRate}%</span>
           </div>
         </div>
-
         <button
           onClick={() => setShowAdvanced(!showAdvanced)}
           className="text-sm text-primary-600 hover:text-primary-700 flex items-center"
           type="button"
         >
           <FaFilter className="w-4 h-4 mr-1" />
-          {showAdvanced ? '收起' : '展开'}
+          {showAdvanced ? '收起高级筛选' : '展开高级筛选'}
         </button>
       </div>
 
@@ -134,11 +146,40 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
       {/* 高级筛选器 */}
       {showAdvanced && (
         <div className="border-t pt-6 space-y-6">
+          {/* 任务类型筛选 */}
+          {onHabitFilterChange && (
+            <div>
+              <div className="flex items-center mb-3">
+                <FaHistory className="w-4 h-4 text-gray-500 mr-2" />
+                <span className="text-sm font-medium text-gray-700">任务类型</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {habitOptions.map(option => (
+                  <button
+                    key={option.id === null ? 'all' : option.id ? 'habit' : 'normal'}
+                    onClick={() => onHabitFilterChange(option.id)}
+                    className={`
+                      flex items-center px-4 py-2 rounded-lg text-sm transition-colors
+                      ${activeHabitFilter === option.id
+                        ? 'bg-primary-100 text-primary-700 border border-primary-300'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }
+                    `}
+                    type="button"
+                  >
+                    <span className="mr-2">{option.icon}</span>
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 优先级筛选 */}
           {onPriorityFilterChange && (
             <div>
               <div className="flex items-center mb-3">
-                <span className="text-sm font-medium text-gray-700">Priority</span>
+                <span className="text-sm font-medium text-gray-700">优先级</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {priorityOptions.map(option => (
@@ -163,7 +204,7 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
             <div>
               <div className="flex items-center mb-3">
                 <FaFire className="w-4 h-4 text-gray-500 mr-2" />
-                <span className="text-sm font-medium text-gray-700">Energy Range</span>
+                <span className="text-sm font-medium text-gray-700">能量范围</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {energyRanges.map(range => (
@@ -190,7 +231,7 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
           <div>
             <div className="flex items-center mb-3">
               <FaSortAmountDown className="w-4 h-4 text-gray-500 mr-2" />
-              <span className="text-sm font-medium text-gray-700">Sort By</span>
+              <span className="text-sm font-medium text-gray-700">排序方式</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
               {sortOptions.map(option => (
@@ -224,6 +265,11 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
               {filterOptions.find(f => f.id === activeFilter)?.label}
             </span>
           )}
+          {activeHabitFilter !== null && activeHabitFilter !== undefined && (
+            <span className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs ml-2">
+              {habitOptions.find(h => h.id === activeHabitFilter)?.label}
+            </span>
+          )}
           {activePriority !== null && activePriority !== undefined && (
             <span className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs ml-2">
               {priorityOptions.find(p => p.id === activePriority)?.label}
@@ -231,7 +277,7 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
           )}
           {activeEnergyRange && activeEnergyRange.min !== 1 && activeEnergyRange.max !== 10 && (
             <span className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs ml-2">
-              Energy: {activeEnergyRange.min}-{activeEnergyRange.max}
+              能量: {activeEnergyRange.min}-{activeEnergyRange.max}
             </span>
           )}
         </div>
