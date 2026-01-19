@@ -94,7 +94,11 @@ export const TaskList: React.FC = () => {
         if (existingIndex >= 0) {
           completions[existingIndex].status = 'completed';
         } else {
-          completions.push({ date: today, status: 'completed' });
+          completions.push({ 
+            date: today, 
+            status: 'completed', 
+            completed_at: new Date().toISOString() // 添加当前时间
+          });
         }
       } else {
         // 标记为未完成
@@ -207,7 +211,6 @@ export const TaskList: React.FC = () => {
 
   // 统计信息
   const completedTasks = tasks.filter(task => task.status === 'completed').length;
-  const totalEnergy = tasks.reduce((sum, task) => sum + (task.energy_cost || 0), 0);
   const habitTasks = tasks.filter(task => task.is_habit).length;
 
   if (loading) {

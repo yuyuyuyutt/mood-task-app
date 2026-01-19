@@ -1,5 +1,5 @@
 //src\api\index.ts
-import { Task, Mood, HabitCompletion } from '../types';
+import { Task, Mood} from '../types';
 
 // Tauri 导入
 import { invoke } from '@tauri-apps/api/core';

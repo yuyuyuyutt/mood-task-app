@@ -17,25 +17,11 @@ import {
 import { api } from '../api';
 import { Task, Mood } from '../types';
 
-// 从真实数据结构定义
-interface TaskStat extends Task {
-  completed: boolean;
-}
-
-interface MoodStat {
-  date: string;
-  mood: 'happy' | 'neutral' | 'sad';
-  note: string;
-  mood_score: number;
-  mood_emoji: string;
-  content: string;
-}
-
 export const Statistics: React.FC = () => {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [moods, setMoods] = useState<Mood[]>([]);
-  const [statistics, setStatistics] = useState<any>(null);
+  const [setStatistics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   // 从数据库加载数据
@@ -134,26 +120,6 @@ export const Statistics: React.FC = () => {
       default: return `优先级 ${priority}`;
     }
   };
-
-  // 获取最近7天的任务和心情趋势
-  const getRecentTrends = () => {
-    const today = new Date();
-    const recentTasks = tasks.filter(task => {
-      const taskDate = new Date(task.created_at);
-      const diffDays = Math.floor((today.getTime() - taskDate.getTime()) / (1000 * 3600 * 24));
-      return diffDays <= 7;
-    });
-
-    const recentMoods = moods.filter(mood => {
-      const moodDate = new Date(mood.date);
-      const diffDays = Math.floor((today.getTime() - moodDate.getTime()) / (1000 * 3600 * 24));
-      return diffDays <= 7;
-    });
-
-    return { recentTasks, recentMoods };
-  };
-
-  const { recentTasks, recentMoods } = getRecentTrends();
 
   // 计算趋势变化
   const calculateTrend = () => {

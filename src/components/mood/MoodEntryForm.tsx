@@ -115,12 +115,6 @@ export const MoodEntryForm: React.FC<MoodEntryFormProps> = ({
     });
   };
 
-  const getMoodOption = useCallback((score: number) => {
-    return DEFAULT_MOOD_OPTIONS.find(option => option.score === score) || DEFAULT_MOOD_OPTIONS[2];
-  }, []);
-
-  const selectedMoodOption = getMoodOption(formData.mood_score);
-
   return (
     <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-900 rounded-xl shadow-sm p-6">
       <div className="flex items-center justify-between mb-6">

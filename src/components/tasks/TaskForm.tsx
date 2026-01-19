@@ -5,7 +5,6 @@ import { Task } from '../../types';
 import { 
   FaTimes, 
   FaCalendarAlt, 
-  FaClock, 
   FaBolt, 
   FaTag,
   FaFire,

@@ -1,22 +1,23 @@
 // src/main.rs
-mod database;
 mod commands;
+mod database;
 
-use tauri::Manager;
 use commands::{
-    AppState, 
-    get_tasks, 
-    create_task, 
-    update_task, 
-    delete_task, 
+    create_task,
+    delete_mood,
+    delete_task,
+    get_moods,
+    get_tasks,
+    save_mood,
     update_habit_completion, // 新增习惯完成更新
-    get_moods, 
-    save_mood, 
-    delete_mood
+    update_task,
+    AppState,
 };
+use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // 在 setup 阶段初始化数据库
             match database::init_db(app.handle()) {

@@ -1,18 +1,9 @@
 //src/pages/Settings.tsx
 import React, { useState } from 'react';
 import {
-  FaUser,
   FaBell,
-  FaPalette,
-  FaGlobe,
   FaMoon,
   FaSun,
-  FaSave,
-  FaLock,
-  FaEye,
-  FaEyeSlash,
-  FaUpload,
-  FaTrash,
   FaCheck
 } from 'react-icons/fa';
 import { useTheme } from '../hooks/useTheme'; // 导入主题 Hook
@@ -43,13 +34,7 @@ export const Settings: React.FC = () => {
     autoSave: true,
     backupFrequency: 'weekly' as 'daily' | 'weekly' | 'monthly',
   });
-
-  const [showPassword, setShowPassword] = useState(false);
-  const [oldPassword, setOldPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [message] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const handleChange = (key: keyof typeof settings, value: any) => {
     setSettings(prev => ({
@@ -57,52 +42,6 @@ export const Settings: React.FC = () => {
       [key]: value
     }));
   };
-
-  const handleSave = async () => {
-    setSaving(true);
-    setMessage(null);
-    
-    try {
-      // 模拟API调用
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // 密码修改逻辑
-      if (newPassword && newPassword !== confirmPassword) {
-        throw new Error('新密码和确认密码不一致');
-      }
-      
-      if (newPassword && newPassword.length < 6) {
-        throw new Error('密码长度至少6位');
-      }
-      
-      console.log('保存设置:', settings);
-      
-      if (newPassword) {
-        console.log('密码修改为:', newPassword);
-        setOldPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-      }
-      
-      setMessage({ type: 'success', text: '设置已保存成功' });
-    } catch (error) {
-      setMessage({ 
-        type: 'error', 
-        text: error instanceof Error ? error.message : '保存失败，请重试' 
-      });
-    } finally {
-      setSaving(false);
-      
-      // 清除消息
-      setTimeout(() => {
-        setMessage(null);
-      }, 3000);
-    }
-  };
-
-  // 移除 handleThemeChange 函数，改用 useTheme Hook 的方法
-
-  // ... 其他函数保持不变 ...
 
   return (
     <div className="max-w-4xl mx-auto">

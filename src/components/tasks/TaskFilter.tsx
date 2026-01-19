@@ -12,18 +12,6 @@ import {
   FaStar
 } from 'react-icons/fa';
 
-interface FilterOption {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-}
-
-interface SortOption {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-}
-
 interface TaskFilterProps {
   onFilterChange: (filter: string) => void;
   onSortChange: (sort: string) => void;

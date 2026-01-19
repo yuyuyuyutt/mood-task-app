@@ -1,5 +1,5 @@
 //src/components/mood/MoodCalendar.tsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, parseISO } from 'date-fns';
 import { FaChevronLeft, FaChevronRight, FaCalendarAlt } from 'react-icons/fa';
 import { Mood } from '../../types';
@@ -36,7 +36,7 @@ export const MoodCalendar: React.FC<MoodCalendarProps> = ({
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
 
   // 使用 useMemo 缓存月份数据计算
-  const { monthStart, monthEnd, monthDays } = useMemo(() => {
+  const { monthStart, monthDays } = useMemo(() => {
     const start = startOfMonth(currentMonth);
     const end = endOfMonth(currentMonth);
     const days = eachDayOfInterval({ start, end });

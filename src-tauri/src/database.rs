@@ -1,8 +1,8 @@
 // src/database.rs
-use serde::{Deserialize, Serialize};
-use rusqlite::Row;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::Row;
+use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 // 数据库连接池类型别名
@@ -11,30 +11,31 @@ pub type DbPool = Pool<SqliteConnectionManager>;
 // 初始化数据库
 pub fn init_db(app_handle: &tauri::AppHandle) -> Result<DbPool, String> {
     // 使用 Tauri 2.0 的正确API获取本地数据目录
-    let app_data_dir = app_handle.path().app_local_data_dir()
+    let app_data_dir = app_handle
+        .path()
+        .app_local_data_dir()
         .map_err(|e| format!("无法获取本地数据目录: {}", e))?;
-    
-    std::fs::create_dir_all(&app_data_dir)
-        .map_err(|e| format!("创建目录失败: {}", e))?;
-    
+
+    std::fs::create_dir_all(&app_data_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+
     let db_path = app_data_dir.join("data.db");
     println!("数据库路径: {:?}", db_path);
-    
+
     // 创建连接池
     let manager = SqliteConnectionManager::file(db_path);
-    let pool = Pool::new(manager)
-        .map_err(|e: r2d2::Error| format!("创建连接池失败: {}", e))?;
-    
+    let pool = Pool::new(manager).map_err(|e: r2d2::Error| format!("创建连接池失败: {}", e))?;
+
     // 初始化表结构
     init_tables(&pool)?;
-    
+
     Ok(pool)
 }
 
 fn init_tables(pool: &DbPool) -> Result<(), String> {
-    let conn = pool.get()
+    let conn = pool
+        .get()
         .map_err(|e: r2d2::Error| format!("获取连接失败: {}", e))?;
-    
+
     // 任务表 - 添加习惯任务字段
     conn.execute(
         "CREATE TABLE IF NOT EXISTS tasks (
@@ -58,8 +59,9 @@ fn init_tables(pool: &DbPool) -> Result<(), String> {
             habit_end_date TEXT
         )",
         [],
-    ).map_err(|e: rusqlite::Error| format!("创建任务表失败: {}", e))?;
-    
+    )
+    .map_err(|e: rusqlite::Error| format!("创建任务表失败: {}", e))?;
+
     // 心情日记表
     conn.execute(
         "CREATE TABLE IF NOT EXISTS moods (
@@ -72,24 +74,28 @@ fn init_tables(pool: &DbPool) -> Result<(), String> {
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )",
         [],
-    ).map_err(|e: rusqlite::Error| format!("创建心情表失败: {}", e))?;
-    
+    )
+    .map_err(|e: rusqlite::Error| format!("创建心情表失败: {}", e))?;
+
     // 创建索引
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)",
         [],
-    ).map_err(|e: rusqlite::Error| format!("创建索引失败: {}", e))?;
-    
+    )
+    .map_err(|e: rusqlite::Error| format!("创建索引失败: {}", e))?;
+
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tasks_is_habit ON tasks(is_habit)",
         [],
-    ).map_err(|e: rusqlite::Error| format!("创建索引失败: {}", e))?;
-    
+    )
+    .map_err(|e: rusqlite::Error| format!("创建索引失败: {}", e))?;
+
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_moods_date ON moods(date DESC)",
         [],
-    ).map_err(|e: rusqlite::Error| format!("创建索引失败: {}", e))?;
-    
+    )
+    .map_err(|e: rusqlite::Error| format!("创建索引失败: {}", e))?;
+
     Ok(())
 }
 
