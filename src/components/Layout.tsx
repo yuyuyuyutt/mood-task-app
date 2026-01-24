@@ -12,6 +12,7 @@ import {
   FaCalendarAlt,
   FaUser,
   FaArrowRight,
+  FaPlug,
   FaSpinner
 } from 'react-icons/fa';
 import { UserProfileModalTauri } from './UserProfileModalTauri';
@@ -38,6 +39,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { path: '/', label: '任务列表', icon: <FaTasks />, exact: true },
     { path: '/mood', label: '心情日记', icon: <FaSmile /> },
     { path: '/stats', label: '数据统计', icon: <FaChartBar /> },
+    { path: '/plugins', label: '插件管理', icon: <FaPlug /> }, 
     { path: '/settings', label: '系统设置', icon: <FaCog /> },
   ];
 
@@ -207,6 +209,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                     if (item?.label === '任务列表') return '高效管理您的日常任务';
                     if (item?.label === '心情日记') return '记录您的情绪与思考';
                     if (item?.label === '数据统计') return '查看您的生产力分析';
+                    if (item?.label === '插件管理') return '扩展应用功能，安装和管理插件'; 
                     if (item?.label === '系统设置') return '个性化您的应用体验';
                     return '';
                   })()}
