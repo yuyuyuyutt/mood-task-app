@@ -8,7 +8,6 @@ import {
   FaClock,
   FaExclamationTriangle,
   FaCalendar,
-  FaBolt,
   FaTag,
   FaFire,
   FaHistory,
@@ -252,14 +251,6 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           </div>
           
           <div className="flex items-center space-x-4 text-sm text-gray-600">
-            {/* 能量值 */}
-            {task.energy_cost && (
-              <span className="flex items-center">
-                <FaBolt className="w-3 h-3 mr-1 text-yellow-500" />
-                {task.energy_cost} ⚡
-              </span>
-            )}
-            
             {/* 截止日期 */}
             {dueDate && (
               <span className="flex items-center">

@@ -1,56 +1,21 @@
-import { useState, useEffect } from 'react';
-
-type Theme = 'light' | 'dark';
+// src/hooks/useTheme.ts
+// 主题 Hook：不再自行读写 DOM / localStorage，而是完全委托给插件宿主。
+// 深色模式是否可用，取决于"深色主题"能力插件（内置 dark-theme.toml）的安装与启用状态：
+//   - 未安装 -> 只有浅色基线，toggle/setDark 会自动安装并启用内置插件
+//   - 已安装未启用 -> 浅色；启用 -> 深色
+// 保留原 API（theme/toggleTheme/setLightTheme/setDarkTheme/isDark/isLight），
+// 使调用方（如设置页）无需感知底层实现。
+import { usePluginHost } from '../plugins/runtime';
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    // 从 localStorage 获取保存的主题
-    const savedTheme = localStorage.getItem('theme') as Theme;
-    
-    // 如果用户已保存主题偏好，使用它
-    if (savedTheme) {
-      return savedTheme;
-    }
-    
-    // 否则检查系统偏好
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-    
-    return 'light';
-  });
-
-  useEffect(() => {
-    const root = document.documentElement;
-    
-    // 移除旧的类
-    root.classList.remove('light', 'dark');
-    // 添加新的主题类
-    root.classList.add(theme);
-    
-    // 保存到 localStorage
-    localStorage.setItem('theme', theme);
-    
-    // 更新 HTML 的 data-theme 属性（可选，便于其他样式引用）
-    root.setAttribute('data-theme', theme);
-    
-  }, [theme]);
-
-  // 切换主题
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
-  };
-
-  // 设置特定主题
-  const setLightTheme = () => setTheme('light');
-  const setDarkTheme = () => setTheme('dark');
+  const { theme } = usePluginHost();
 
   return {
-    theme,
-    toggleTheme,
-    setLightTheme,
-    setDarkTheme,
-    isDark: theme === 'dark',
-    isLight: theme === 'light',
+    theme: theme.mode,
+    toggleTheme: () => void theme.toggle(),
+    setLightTheme: () => void theme.setLight(),
+    setDarkTheme: () => void theme.setDark(),
+    isDark: theme.isDark,
+    isLight: theme.isLight,
   };
 }

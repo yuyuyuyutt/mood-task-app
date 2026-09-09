@@ -1,0 +1,132 @@
+# ============================================================
+# 黑白线框 · 荧光（内置代码插件）
+# ------------------------------------------------------------
+# 这是"沙箱化代码插件"的示范：插件不再只是写死 CSS，而是携带一段
+# JavaScript 源码，在宿主提供的沙箱 iframe 中运行，用代码动态生成
+# 一套"墨黑 × 酸性荧光绿"的艺术风格（设计令牌 + 整站样式），再通过
+# SDK.applyTheme() 提交给宿主，由宿主落到真实 DOM。
+# 安全：代码运行在 sandbox="allow-scripts"（opaque origin）的 iframe 里，
+# 无 allow-same-origin，无法访问主应用 DOM/storage/cookie，只能走受限消息协议。
+# ============================================================
+
+[metadata]
+id = "wireframe"
+name = "黑白线框 · 荧光"
+version = "2.0.1"
+author = "高山仰止核心团队"
+description = "墨黑纸面 × 酸性荧光绿的代码主题插件：由沙箱 JS 动态生成设计令牌与整站样式，锐利、赛博、极具个人辨识度"
+homepage = "https://example.com/plugins/wireframe"
+license = "MIT"
+createdAt = "2025-01-01T00:00:00Z"
+updatedAt = "2025-03-01T00:00:00Z"
+
+[metadata.compatibility]
+minCoreVersion = "1.0.0"
+maxCoreVersion = "9.9.9"
+testedVersions = ["1.0.0"]
+
+[permissions.ui]
+overlay = true
+
+[frontend]
+entry = "capability://code"
+type = "widget"
+
+[frontend.config]
+capability = "code"
+
+# ---------------- 声明式能力：沙箱代码（theme 类） ----------------
+[capabilities.code]
+type = "code"
+kind = "theme"
+sandbox = true
+permissions = ["theme"]
+inline = '''
+// 墨黑 × 酸性荧光绿 —— 由代码动态生成的艺术风格
+(function () {
+  var accent = '#C6FF00';   // 酸性荧光绿（强调色）
+  var ink    = '#0E0F11';   // 墨黑
+  var paper  = '#F5F6F0';   // 纸面（微暖灰绿）
+  var line   = '#E5E8DE';   // 发丝线
+  var mut    = '#73766A';   // 次级文字
+  var sub    = '#A0A39A';   // 弱文字
+
+  var css = [
+    'html.wireframe, html.wireframe body { background: var(--paper) !important; color: var(--ink) !important; }',
+    'html.wireframe { color-scheme: light; }',
+    'html.wireframe .text-gray-900, html.wireframe .text-gray-800 { color: var(--ink) !important; }',
+    'html.wireframe .text-gray-700, html.wireframe .text-gray-600 { color: #232527 !important; }',
+    'html.wireframe .text-gray-500 { color: var(--mut) !important; }',
+    'html.wireframe .text-gray-400 { color: var(--sub) !important; }',
+    'html.wireframe .text-gray-300 { color: #C8CBC0 !important; }',
+    'html.wireframe .text-primary-500, html.wireframe .text-primary-600, html.wireframe .text-primary-700, html.wireframe .text-primary-800,',
+    'html.wireframe .text-blue-400, html.wireframe .text-blue-500, html.wireframe .text-blue-600, html.wireframe .text-blue-700, html.wireframe .text-blue-800,',
+    'html.wireframe .text-indigo-500, html.wireframe .text-indigo-600, html.wireframe .text-purple-500, html.wireframe .text-purple-600, html.wireframe .text-purple-700,',
+    'html.wireframe .text-green-500, html.wireframe .text-green-600, html.wireframe .text-green-700, html.wireframe .text-green-800,',
+    'html.wireframe .text-red-500, html.wireframe .text-red-600, html.wireframe .text-red-700, html.wireframe .text-red-800,',
+    'html.wireframe .text-yellow-500, html.wireframe .text-yellow-600, html.wireframe .text-yellow-700, html.wireframe .text-yellow-800,',
+    'html.wireframe .text-amber-500, html.wireframe .text-amber-600, html.wireframe .text-orange-500, html.wireframe .text-orange-600 { color: var(--ink) !important; }',
+    'html.wireframe .text-white { color: #fff !important; }',
+    'html.wireframe .bg-gray-50 { background-color: var(--paper) !important; }',
+    'html.wireframe .bg-gray-100 { background-color: #ECEEE6 !important; }',
+    'html.wireframe .bg-gray-200 { background-color: #E2E4DB !important; }',
+    'html.wireframe .bg-white { background-color: #fff !important; }',
+    'html.wireframe .bg-primary-50, html.wireframe .bg-primary-100, html.wireframe .bg-blue-50, html.wireframe .bg-blue-100,',
+    'html.wireframe .bg-indigo-50, html.wireframe .bg-indigo-100, html.wireframe .bg-purple-50, html.wireframe .bg-purple-100,',
+    'html.wireframe .bg-green-50, html.wireframe .bg-green-100, html.wireframe .bg-emerald-50, html.wireframe .bg-red-50, html.wireframe .bg-red-100,',
+    'html.wireframe .bg-yellow-50, html.wireframe .bg-yellow-100, html.wireframe .bg-amber-50, html.wireframe .bg-orange-50 { background-color: #EFF1EA !important; }',
+    'html.wireframe .bg-primary-500, html.wireframe .bg-primary-600, html.wireframe .bg-primary-700,',
+    'html.wireframe .bg-blue-500, html.wireframe .bg-blue-600, html.wireframe .bg-blue-700,',
+    'html.wireframe .bg-indigo-500, html.wireframe .bg-indigo-600, html.wireframe .bg-purple-500, html.wireframe .bg-purple-600,',
+    'html.wireframe .bg-green-500, html.wireframe .bg-green-600, html.wireframe .bg-green-700, html.wireframe .bg-emerald-500,',
+    'html.wireframe .bg-red-400, html.wireframe .bg-red-500, html.wireframe .bg-red-600, html.wireframe .bg-rose-500,',
+    'html.wireframe .bg-yellow-400, html.wireframe .bg-yellow-500, html.wireframe .bg-amber-500, html.wireframe .bg-orange-500,',
+    'html.wireframe .bg-gray-700 { background-color: var(--ink) !important; }',
+    'html.wireframe .bg-gray-800 { background-color: #14161A !important; }',
+    'html.wireframe .bg-gray-900 { background-color: #0A0B0D !important; }',
+    'html.wireframe .bg-gradient-to-r, html.wireframe .bg-gradient-to-br, html.wireframe .bg-gradient-to-b,',
+    'html.wireframe .bg-gradient-to-t, html.wireframe .bg-gradient-to-l, html.wireframe .bg-gradient-to-tr,',
+    'html.wireframe .bg-gradient-to-tl, html.wireframe .bg-gradient-to-bl { background-image: none !important; background-color: var(--ink) !important; }',
+    'html.wireframe .btn, html.wireframe .btn-primary { background: var(--ink) !important; border: 1px solid var(--ink) !important; color: #fff !important; box-shadow: 0 1px 2px rgba(10,11,13,.25) !important; }',
+    'html.wireframe .btn:hover, html.wireframe .btn-primary:hover { background: #000 !important; border-color: var(--accent) !important; }',
+    'html.wireframe .btn-secondary { background: #fff !important; border: 1px solid var(--line) !important; color: var(--ink) !important; box-shadow: none !important; }',
+    'html.wireframe .btn-secondary:hover { border-color: var(--accent) !important; }',
+    'html.wireframe input[type="text"], html.wireframe input[type="search"], html.wireframe input[type="date"], html.wireframe input[type="time"],',
+    'html.wireframe input[type="number"], html.wireframe input[type="url"], html.wireframe select, html.wireframe textarea { background: #fff !important; color: var(--ink) !important; border-color: var(--line) !important; caret-color: var(--ink) !important; }',
+    'html.wireframe input:focus-visible, html.wireframe select:focus-visible, html.wireframe textarea:focus-visible { outline: none !important; border-color: var(--ink) !important; box-shadow: 0 0 0 1px var(--ink) !important; }',
+    'html.wireframe aside { border-right: 1px solid var(--line) !important; }',
+    'html.wireframe header { border-bottom: 1px solid var(--line) !important; }',
+    'html.wireframe .border-gray-100, html.wireframe .border-gray-200 { border-color: var(--line) !important; }',
+    'html.wireframe .border-gray-300 { border-color: #D8DBD0 !important; }',
+    'html.wireframe .border-gray-400 { border-color: var(--sub) !important; }',
+    'html.wireframe .border-primary-200, html.wireframe .border-primary-300, html.wireframe .border-primary-400, html.wireframe .border-primary-500,',
+    'html.wireframe .border-blue-300, html.wireframe .border-blue-400, html.wireframe .border-blue-500,',
+    'html.wireframe .border-green-300, html.wireframe .border-green-400, html.wireframe .border-green-500,',
+    'html.wireframe .border-red-200, html.wireframe .border-red-300, html.wireframe .border-red-400, html.wireframe .border-red-500,',
+    'html.wireframe .border-yellow-300, html.wireframe .border-yellow-400, html.wireframe .border-purple-300, html.wireframe .border-purple-400 { border-color: #C9CCC2 !important; }',
+    'html.wireframe :focus-visible { outline: 1.5px dashed var(--accent) !important; outline-offset: 2px; }',
+    'html.wireframe ::selection { background: var(--accent) !important; color: var(--ink) !important; }',
+    'html.wireframe input[type="range"], html.wireframe input[type="checkbox"], html.wireframe input[type="radio"] { accent-color: var(--accent) !important; }',
+    'html.wireframe .bg-primary-400 { background-color: var(--accent) !important; }',
+    'html.wireframe ::-webkit-scrollbar { width: 9px; height: 9px; }',
+    'html.wireframe ::-webkit-scrollbar-track { background: transparent; }',
+    'html.wireframe ::-webkit-scrollbar-thumb { background: #D5D7CC; border-radius: 99px; }',
+    'html.wireframe ::-webkit-scrollbar-thumb:hover { background: var(--accent); }',
+    'html.wireframe .recharts-wrapper, html.wireframe .recharts-surface { filter: grayscale(1) contrast(1.2); }'
+  ].join('\n');
+
+  SDK.applyTheme({
+    mode: 'light',
+    className: 'wireframe',
+    tokens: {
+      '--accent': accent,
+      '--ink': ink,
+      '--paper': paper,
+      '--line': line,
+      '--mut': mut,
+      '--sub': sub
+    },
+    css: css
+  });
+})();
+'''

@@ -1,6 +1,9 @@
 // src/components/plugins/PluginInstallModal.tsx
-import React, { useState, useCallback } from 'react';
-import { FaTimes, FaUpload, FaLink, FaFileCode, FaShieldAlt, FaExclamationTriangle } from 'react-icons/fa';
+import React, { useState, useCallback, useEffect } from 'react';
+import {
+  FaTimes, FaUpload, FaLink, FaFileCode, FaShieldAlt, FaExclamationTriangle,
+  FaFile, FaDatabase, FaLayerGroup, FaNetworkWired,
+} from 'react-icons/fa';
 import { type ParseResult, type PluginManifest } from '../../plugins/parser';
 
 interface PluginInstallModalProps {
@@ -8,8 +11,68 @@ interface PluginInstallModalProps {
   onClose: () => void;
   onInstall: (manifest: PluginManifest) => void;
   onFileUpload: (file: File) => Promise<void>;
+  /** 从 URL 拉取并解析远程插件清单 */
+  onFetchUrl?: (url: string) => Promise<void>;
   parsingResult: ParseResult | null;
   loading: boolean;
+}
+
+/** 从清单中提取权限摘要（安装前向用户展示，必须显式同意才能安装） */
+function buildPermissionSummary(manifest: PluginManifest) {
+  const items: { icon: React.ReactNode; label: string; detail: string; danger?: boolean }[] = [];
+  const warnings: string[] = [];
+
+  const page = manifest.capabilities?.page;
+  if (page) {
+    items.push({
+      icon: <FaFile className="w-4 h-4 text-blue-500" />,
+      label: '新增页面',
+      detail: `「${page.title}」 → ${page.path}`,
+    });
+  }
+
+  const data = manifest.capabilities?.data;
+  if (data) {
+    const ops = (data.operations ?? ['read']).join(' / ');
+    items.push({
+      icon: <FaDatabase className="w-4 h-4 text-green-500" />,
+      label: '读写长期数据',
+      detail: `命名空间 ${data.namespace} · 集合 ${(data.collections ?? []).join(', ') || '无'} · 权限 ${ops} · 卸载保留 ${data.retentionDays ?? 3} 天`,
+      danger: data.operations?.includes('delete') ?? false,
+    });
+  }
+
+  const theme = manifest.capabilities?.theme;
+  if (theme) {
+    items.push({
+      icon: <FaLayerGroup className="w-4 h-4 text-purple-500" />,
+      label: '界面主题',
+      detail: `启用后应用 ${theme.mode === 'dark' ? '深色' : '浅色'}外观`,
+    });
+  }
+
+  const net = manifest.permissions?.network;
+  if (net && (net.domains?.length || net.protocols?.length)) {
+    items.push({
+      icon: <FaNetworkWired className="w-4 h-4 text-yellow-500" />,
+      label: '网络访问',
+      detail: `域名 ${net.domains?.join(', ') || '未限定'}`,
+      danger: net.domains?.includes('*') ?? false,
+    });
+  }
+
+  if (manifest.permissions?.system?.shell) {
+    warnings.push('该插件请求系统 shell 权限，存在高风险，请谨慎安装');
+  }
+
+  // 未知能力：宿主会安全忽略，但需告知用户
+  const known = new Set(['theme', 'page', 'data']);
+  const unknownCount = Object.keys(manifest.capabilities ?? {}).filter((k) => !known.has(k)).length;
+  if (unknownCount > 0) {
+    warnings.push(`包含 ${unknownCount} 个宿主暂不支持的能力声明（将被安全忽略，不执行任何代码）`);
+  }
+
+  return { items, warnings };
 }
 
 export const PluginInstallModal: React.FC<PluginInstallModalProps> = ({
@@ -17,35 +80,46 @@ export const PluginInstallModal: React.FC<PluginInstallModalProps> = ({
   onClose,
   onInstall,
   onFileUpload,
+  onFetchUrl,
   parsingResult,
   loading
 }) => {
   const [installMethod, setInstallMethod] = useState<'file' | 'url'>('file');
-  const [pluginFile, setPluginFile] = useState<File | null>(null);
   const [pluginUrl, setPluginUrl] = useState('');
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const [consented, setConsented] = useState(false);
+
+  // 每次打开弹窗重置同意状态
+  useEffect(() => {
+    if (isOpen) setConsented(false);
+  }, [isOpen]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setPluginFile(file);
       onFileUpload(file);
     }
   }, [onFileUpload]);
 
-  const handleUrlSubmit = useCallback(() => {
-    if (pluginUrl) {
-      // TODO: 从URL下载并解析插件
-      console.log('从URL安装:', pluginUrl);
+  const handleUrlSubmit = useCallback(async () => {
+    if (!pluginUrl || !onFetchUrl) return;
+    setUrlError(null);
+    try {
+      await onFetchUrl(pluginUrl);
+    } catch (err: any) {
+      setUrlError(err.message || '获取插件失败');
     }
-  }, [pluginUrl]);
+  }, [pluginUrl, onFetchUrl]);
 
   const handleInstall = useCallback(() => {
-    if (parsingResult?.success && parsingResult.manifest) {
+    if (parsingResult?.success && parsingResult.manifest && consented) {
       onInstall(parsingResult.manifest);
     }
-  }, [parsingResult, onInstall]);
+  }, [parsingResult, onInstall, consented]);
 
   if (!isOpen) return null;
+
+  const summary = parsingResult?.manifest ? buildPermissionSummary(parsingResult.manifest) : null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -152,6 +226,9 @@ export const PluginInstallModal: React.FC<PluginInstallModalProps> = ({
                     获取
                   </button>
                 </div>
+                {urlError && (
+                  <p className="mt-2 text-sm text-red-600 dark:text-red-400">{urlError}</p>
+                )}
               </div>
             )}
 
@@ -187,15 +264,54 @@ export const PluginInstallModal: React.FC<PluginInstallModalProps> = ({
                           <span className="text-sm text-gray-600 dark:text-gray-400">作者：</span>
                           <span className="font-medium">{parsingResult.manifest.metadata.author}</span>
                         </div>
-                        {parsingResult.manifest.permissions && (
-                          <div>
-                            <span className="text-sm text-gray-600 dark:text-gray-400">权限：</span>
-                            <span className="font-medium">
-                              {Object.keys(parsingResult.manifest.permissions).length} 项权限
-                            </span>
-                          </div>
-                        )}
                       </div>
+
+                      {/* 权限摘要 */}
+                      {summary && summary.items.length > 0 && (
+                        <div className="mt-4">
+                          <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center">
+                            <FaShieldAlt className="w-3 h-3 mr-1" />
+                            该插件请求以下能力
+                          </h5>
+                          <div className="space-y-2">
+                            {summary.items.map((item, i) => (
+                              <div
+                                key={i}
+                                className={`flex items-start p-2 rounded-lg ${
+                                  item.danger
+                                    ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800'
+                                    : 'bg-gray-50 dark:bg-gray-700/50'
+                                }`}
+                              >
+                                <span className="mr-2 mt-0.5 flex-shrink-0">{item.icon}</span>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                                    {item.label}
+                                    {item.danger && (
+                                      <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300">
+                                        需谨慎
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{item.detail}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 安全提示 */}
+                      {(summary?.warnings.length ?? 0) > 0 && (
+                        <div className="mt-3 space-y-1">
+                          {summary!.warnings.map((w, i) => (
+                            <p key={i} className="text-xs text-orange-600 dark:text-orange-400 flex items-start">
+                              <FaExclamationTriangle className="w-3 h-3 mr-1 mt-0.5 flex-shrink-0" />
+                              {w}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div>
@@ -217,6 +333,22 @@ export const PluginInstallModal: React.FC<PluginInstallModalProps> = ({
                 </div>
               </div>
             )}
+            {/* 授权确认 */}
+            {parsingResult?.success && parsingResult.manifest && (
+              <div className="mb-6">
+                <label className="flex items-start p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={consented}
+                    onChange={(e) => setConsented(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 text-primary-500 focus:ring-primary-500 rounded"
+                  />
+                  <span className="ml-3 text-sm text-gray-700 dark:text-gray-300">
+                    我已了解并同意上述能力声明与权限范围，确认安装此插件
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
 
           {/* 底部按钮 */}
@@ -229,10 +361,10 @@ export const PluginInstallModal: React.FC<PluginInstallModalProps> = ({
             </button>
             <button
               onClick={handleInstall}
-              disabled={!parsingResult?.success || loading}
+              disabled={!parsingResult?.success || !consented || loading}
               className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? '安装中...' : '安装插件'}
+              {loading ? '安装中...' : '同意并安装'}
             </button>
           </div>
         </div>

@@ -14,13 +14,14 @@ const urlSchema = z.string().url().optional();
 const metadataSchema = z.object({
   id: z.string()
     .min(1, 'Plugin ID is required')
+    .max(32, 'Plugin ID must not exceed 32 characters')
     .regex(/^[a-z0-9-_]+$/, 'Plugin ID must contain only lowercase letters, numbers, hyphens, and underscores'),
-  name: z.string().min(1, 'Plugin name is required'),
+  name: z.string().min(1, 'Plugin name is required').max(64, 'Plugin name must not exceed 64 characters'),
   version: versionSchema,
-  author: z.string().min(1, 'Author is required'),
-  description: z.string().min(10, 'Description must be at least 10 characters'),
+  author: z.string().min(1, 'Author is required').max(64, 'Author must not exceed 64 characters'),
+  description: z.string().min(10, 'Description must be at least 10 characters').max(2000, 'Description must not exceed 2000 characters'),
   homepage: urlSchema,
-  license: z.string().optional(),
+  license: z.string().max(64).optional(),
   compatibility: z.object({
     minCoreVersion: versionSchema,
     maxCoreVersion: versionSchema.optional(),
@@ -164,6 +165,70 @@ const hooksSchema = z.object({
   onUpdate: z.string().optional()
 }).optional();
 
+// ============ 声明式能力验证 ============
+// 已知能力严格验证（含安全约束）；未知能力透传（catchall），保证向前兼容，
+// 宿主会对未知能力做安全忽略，绝不执行插件代码。
+
+// 受信任的导航图标白名单（防图标名注入）
+const PAGE_ICONS = ['smile', 'calendar', 'tasks', 'chart', 'plug', 'settings', 'home', 'moon'] as const;
+
+const themeCapabilitySchema = z.object({
+  type: z.literal('theme'),
+  mode: z.enum(['light', 'dark']),
+  className: z.string().max(64).optional(),
+  dataAttribute: z.string().max(64).optional(),
+  attributeValue: z.string().max(64).optional(),
+  followSystem: z.boolean().optional().default(true),
+  variables: z.record(z.string().max(128), z.string().max(256)).optional(),
+  styleSheet: z.string().max(300_000, 'styleSheet 超过 300KB 上限').optional()
+});
+
+const pageCapabilitySchema = z.object({
+  type: z.literal('page'),
+  pageId: z.string().regex(/^[a-z0-9-_]{1,48}$/, 'pageId 只能包含小写字母/数字/连字符/下划线'),
+  title: z.string().min(1).max(64, '页面标题过长'),
+  path: z
+    .string()
+    .regex(/^\/[a-z0-9-_/]{0,63}$/, 'path 必须以 / 开头，且只能包含小写字母/数字/-/_/'),
+  icon: z.enum(PAGE_ICONS).optional(),
+  description: z.string().max(500).optional(),
+  showInNav: z.boolean().optional().default(true)
+});
+
+const dataCapabilitySchema = z.object({
+  type: z.literal('data'),
+  namespace: z
+    .string()
+    .regex(/^[a-z0-9-_]{1,32}$/, 'namespace 只能包含小写字母/数字/连字符/下划线'),
+  collections: z
+    .array(z.string().regex(/^[a-z0-9-_]{1,64}$/, '集合名不合法'))
+    .min(1, '至少声明一个集合')
+    .max(32, '集合数量过多')
+    .optional(),
+  operations: z
+    .array(z.enum(['read', 'write', 'delete']))
+    .min(1)
+    .optional()
+    .default(['read']),
+  retentionDays: z.number().int().min(0).max(90, '保留天数不得超过 90').optional().default(3)
+});
+
+const codeCapabilitySchema = z.object({
+  type: z.literal('code'),
+  kind: z.literal('theme'),
+  inline: z.string().max(200_000, 'inline 源码超过 200KB 上限').optional(),
+  url: z.string().url('url 必须是合法 URL').optional(),
+  sandbox: z.boolean().optional().default(true),
+  permissions: z.array(z.enum(['theme', 'storage'])).optional().default(['theme'])
+});
+
+const capabilitiesSchema = z.object({
+  theme: themeCapabilitySchema.optional(),
+  page: pageCapabilitySchema.optional(),
+  data: dataCapabilitySchema.optional(),
+  code: codeCapabilitySchema.optional()
+}).catchall(z.any()).optional();
+
 // ============ 完整插件清单验证 ============
 const manifestSchema = z.object({
   metadata: metadataSchema,
@@ -172,7 +237,8 @@ const manifestSchema = z.object({
   frontend: frontendSchema,
   backend: backendSchema,
   assets: assetsSchema,
-  hooks: hooksSchema
+  hooks: hooksSchema,
+  capabilities: capabilitiesSchema
 });
 
 // ============ 验证结果接口 ============
@@ -287,15 +353,18 @@ function performExtraValidations(manifest: PluginManifest): {
     ));
   }
 
-  // 3. 验证前端入口文件扩展名
-  const entryExt = manifest.frontend.entry.split('.').pop()?.toLowerCase();
-  const allowedExts = ['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs'];
-  if (entryExt && !allowedExts.includes(entryExt)) {
-    warnings.push(new PluginError(
-      'UNUSUAL_ENTRY_EXTENSION',
-      `Frontend entry has unusual extension: .${entryExt}. Expected: ${allowedExts.join(', ')}`,
-      'warning'
-    ));
+  // 3. 验证前端入口文件扩展名（capability:// 形式的声明式入口跳过检查）
+  const entry = manifest.frontend.entry;
+  if (!entry.startsWith('capability://')) {
+    const entryExt = entry.split('.').pop()?.toLowerCase();
+    const allowedExts = ['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs'];
+    if (entryExt && !allowedExts.includes(entryExt)) {
+      warnings.push(new PluginError(
+        'UNUSUAL_ENTRY_EXTENSION',
+        `Frontend entry has unusual extension: .${entryExt}. Expected: ${allowedExts.join(', ')}`,
+        'warning'
+      ));
+    }
   }
 
   // 4. 验证依赖循环
@@ -315,6 +384,103 @@ function performExtraValidations(manifest: PluginManifest): {
     warnings.push(new PluginError(
       'MISSING_ICON_SIZE',
       'Plugin is missing a 64x64 icon, which is recommended for display in plugin lists',
+      'warning'
+    ));
+  }
+
+  // 6. 校验声明式能力的一致性
+  const themeCap = manifest.capabilities?.theme;
+  if (themeCap) {
+    const hasVisualEffect = !!(
+      themeCap.className ||
+      themeCap.dataAttribute ||
+      themeCap.variables ||
+      themeCap.styleSheet
+    );
+    if (!hasVisualEffect) {
+      warnings.push(new PluginError(
+        'INERT_THEME_CAPABILITY',
+        'Theme capability declares no className / dataAttribute / variables / styleSheet, so enabling it will have no visible effect',
+        'warning'
+      ));
+    }
+  }
+
+  // 7. 页面能力安全检查
+  const pageCap = manifest.capabilities?.page;
+  if (pageCap) {
+    // 路径穿越防护（regex 之外的双保险）
+    if (pageCap.path.includes('..')) {
+      errors.push(new PluginError(
+        'UNSAFE_PAGE_PATH',
+        `Page path contains ".." which is forbidden: ${pageCap.path}`,
+        'error'
+      ));
+    }
+  }
+
+  // 8. 数据能力安全检查
+  const dataCap = manifest.capabilities?.data;
+  if (dataCap) {
+    // 保留命名空间：core / __ 前缀仅供宿主使用
+    if (dataCap.namespace === 'core' || dataCap.namespace.startsWith('__')) {
+      errors.push(new PluginError(
+        'RESERVED_NAMESPACE',
+        `Namespace "${dataCap.namespace}" is reserved for the host. Choose another one.`,
+        'error'
+      ));
+    }
+    // 危险操作提示
+    if (dataCap.operations?.includes('delete')) {
+      warnings.push(new PluginError(
+        'DANGEROUS_DATA_DELETE',
+        'Plugin requests data delete permission. Uninstalled data will be retained for the retention window, but explicit delete calls are irreversible.',
+        'warning'
+      ));
+    }
+  }
+
+  // 8.5 代码能力安全检查（沙箱强制 + 源码来源互斥）
+  const codeCap = manifest.capabilities?.code;
+  if (codeCap) {
+    if (codeCap.sandbox === false) {
+      errors.push(new PluginError(
+        'UNSANDBOXED_CODE',
+        'Code capability must run sandboxed. Setting sandbox = false is forbidden.',
+        'error'
+      ));
+    }
+    const hasInline = typeof codeCap.inline === 'string' && codeCap.inline.length > 0;
+    const hasUrl = typeof codeCap.url === 'string' && codeCap.url.length > 0;
+    if (hasInline && hasUrl) {
+      errors.push(new PluginError(
+        'AMBIGUOUS_CODE_SOURCE',
+        'Code capability must declare exactly one of inline or url.',
+        'error'
+      ));
+    }
+    if (!hasInline && !hasUrl) {
+      errors.push(new PluginError(
+        'MISSING_CODE_SOURCE',
+        'Code capability must declare inline or url source.',
+        'error'
+      ));
+    }
+    if (hasUrl && !codeCap.url!.startsWith('https://')) {
+      warnings.push(new PluginError(
+        'INSECURE_CODE_URL',
+        'Remote code URL is not https; prefer https for code delivery.',
+        'warning'
+      ));
+    }
+  }
+
+  // 9. 可执行入口告警：宿主是纯声明式模型，不执行任何插件代码，
+  //    声明了 backend / hooks 的清单会被安全忽略（提示而非报错）
+  if (manifest.backend || manifest.hooks) {
+    warnings.push(new PluginError(
+      'EXECUTABLE_IGNORED',
+      'This manifest declares backend/hooks entry points. The host runs a declarative-only plugin model and will safely ignore executable entries.',
       'warning'
     ));
   }

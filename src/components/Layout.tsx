@@ -13,20 +13,36 @@ import {
   FaUser,
   FaArrowRight,
   FaPlug,
-  FaSpinner
+  FaSpinner,
+  FaMoon,
+  FaClock,
 } from 'react-icons/fa';
 import { UserProfileModalTauri } from './UserProfileModalTauri';
 import { useUserProfileTauri } from '../hooks/useUserProfileTauri';
+import { usePluginHost } from '../plugins/runtime';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
+/** 页面能力图标白名单（与清单 icon 枚举一致；未命中时回退到插件图标） */
+const PAGE_ICON_MAP: Record<string, React.ReactNode> = {
+  smile: <FaSmile />,
+  calendar: <FaCalendarAlt />,
+  tasks: <FaTasks />,
+  chart: <FaChartBar />,
+  plug: <FaPlug />,
+  settings: <FaCog />,
+  home: <FaHome />,
+  moon: <FaMoon />,
+};
+
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const location = useLocation();
-  
+  const { pages } = usePluginHost();
+
   const {
     userProfile,
     uploading,
@@ -35,13 +51,45 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     removeAvatar
   } = useUserProfileTauri();
 
+  // 核心导航（"心情日记"已解耦为插件，由下方 pluginPages 动态注入）
   const navigationItems = [
     { path: '/', label: '任务列表', icon: <FaTasks />, exact: true },
-    { path: '/mood', label: '心情日记', icon: <FaSmile /> },
+    { path: '/schedule', label: '时段面板', icon: <FaClock />, exact: true },
     { path: '/stats', label: '数据统计', icon: <FaChartBar /> },
-    { path: '/plugins', label: '插件管理', icon: <FaPlug /> }, 
+    { path: '/plugins', label: '插件管理', icon: <FaPlug /> },
     { path: '/settings', label: '系统设置', icon: <FaCog /> },
   ];
+
+  // 插件贡献的页面（仅显示 showInNav 的；pageId 冲突时先启用者生效）
+  const pluginPages = React.useMemo(() => {
+    const seen = new Set<string>();
+    const out: { path: string; label: string; icon: React.ReactNode }[] = [];
+    for (const page of pages) {
+      if (!page.showInNav || seen.has(page.pageId)) continue;
+      seen.add(page.pageId);
+      out.push({
+        path: page.path,
+        label: page.title,
+        icon: PAGE_ICON_MAP[page.icon ?? ''] ?? <FaPlug />,
+      });
+    }
+    return out;
+  }, [pages]);
+
+  const allNavItems: { path: string; label: string; icon: React.ReactNode; exact?: boolean }[] = [
+    ...navigationItems,
+  ];
+  {
+    // 插件页面：路径与核心导航冲突时跳过（核心优先），其余追加
+    const corePaths = new Set(allNavItems.map((i) => i.path));
+    const seen = new Set<string>();
+    for (const page of pluginPages) {
+      if (corePaths.has(page.path) || seen.has(page.path)) continue;
+      seen.add(page.path);
+      allNavItems.push(page);
+    }
+  }
+  const pluginPagePaths = new Set(pluginPages.map((p) => p.path));
 
   // 检查是否是当前路径
   const isActive = (path: string, exact: boolean = false) => {
@@ -111,14 +159,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">高山仰止</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">管理任务与心情</p>
               </div>
             </div>
           </div>
 
           {/* 导航菜单 */}
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {navigationItems.map((item) => (
+            {allNavItems.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
@@ -197,20 +244,21 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 truncate">
-                  {navigationItems.find(item => 
+                  {allNavItems.find(item => 
                     isActive(item.path, item.exact)
-                  )?.label || '欢迎'}
+                  )?.label || '每日任务'}
                 </h2>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 truncate">
                   {(() => {
-                    const item = navigationItems.find(item => 
+                    const item = allNavItems.find(item => 
                       isActive(item.path, item.exact)
                     );
                     if (item?.label === '任务列表') return '高效管理您的日常任务';
-                    if (item?.label === '心情日记') return '记录您的情绪与思考';
+                    if (item?.label === '时段面板') return '按一天中的时间段安排任务';
                     if (item?.label === '数据统计') return '查看您的生产力分析';
                     if (item?.label === '插件管理') return '扩展应用功能，安装和管理插件'; 
                     if (item?.label === '系统设置') return '个性化您的应用体验';
+                    if (item && pluginPagePaths.has(item.path)) return '由插件提供的功能页面';
                     return '';
                   })()}
                 </p>
@@ -245,19 +293,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="flex flex-col md:flex-row justify-between items-center text-sm text-gray-500 dark:text-gray-400 space-y-2 md:space-y-0">
               <div>
                 © {new Date().getFullYear()} 高山仰止. 保留所有权利.
-              </div>
-              <div className="flex items-center space-x-4">
-                <span className="inline-flex items-center">
-                  <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  系统运行正常
-                </span>
-                <button
-                  onClick={() => setProfileModalOpen(true)}
-                  className="text-primary-600 dark:text-blue-400 hover:text-primary-700 dark:hover:text-blue-300 transition-colors"
-                  disabled={uploading}
-                >
-                  {uploading ? '上传头像中...' : '编辑个人资料'}
-                </button>
               </div>
             </div>
           </div>

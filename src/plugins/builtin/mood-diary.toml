@@ -1,0 +1,52 @@
+# ============================================================
+# 心情日记插件（内置插件）
+# ------------------------------------------------------------
+# 将"心情日记"从主应用中解耦为插件：
+#   - 页面能力：向应用贡献 /mood 页面（宿主只渲染内置注册表中
+#     登记的 pageId="mood-diary" 组件，插件本身不含可执行代码）
+#   - 数据能力：读写 namespace="mood" 的长期数据（本地数据库），
+#     操作白名单 read/write/delete；卸载后数据保留 3 天再清除
+# ============================================================
+
+[metadata]
+id = "mood-diary"
+name = "心情日记"
+version = "1.0.0"
+author = "高山仰止核心团队"
+description = "记录每日心情：心情日历、打分与回顾。数据按命名空间隔离写入本地数据库"
+homepage = "https://example.com/plugins/mood-diary"
+license = "MIT"
+createdAt = "2025-01-01T00:00:00Z"
+updatedAt = "2025-01-01T00:00:00Z"
+
+[metadata.compatibility]
+minCoreVersion = "1.0.0"
+maxCoreVersion = "9.9.9"
+testedVersions = ["1.0.0"]
+
+[permissions.ui]
+overlay = true
+
+[frontend]
+entry = "capability://page"
+type = "tab"
+
+[frontend.config]
+capability = "page"
+
+# ---------------- 声明式能力：页面 ----------------
+[capabilities.page]
+type = "page"
+pageId = "mood-diary"
+title = "心情日记"
+path = "/mood"
+icon = "smile"
+description = "记录每日心情并回顾历史趋势"
+
+# ---------------- 声明式能力：长期数据 ----------------
+[capabilities.data]
+type = "data"
+namespace = "mood"
+collections = ["entries"]
+operations = ["read", "write", "delete"]
+retentionDays = 3

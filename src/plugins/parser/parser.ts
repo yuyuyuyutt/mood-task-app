@@ -13,7 +13,12 @@ export class PluginParser {
       sandbox: true,
       strict: true,
       allowUnknownFields: false,
-      basePath: process.cwd(),
+      // 浏览器环境没有 Node 的 process 全局：仅在 Node 下取 cwd，否则用空串，
+      // 避免在浏览器/WebView 中构造解析器时抛 ReferenceError。
+      basePath:
+        typeof process !== 'undefined' && typeof process.cwd === 'function'
+          ? process.cwd()
+          : '',
       tempPath: '/tmp',
       maxFileSize: 10 * 1024 * 1000,
       timeout: 30000,
@@ -41,6 +46,7 @@ export class PluginParser {
       // 1. 读取内容
       const content = await this.readInput(input);
       result.info.fileSize = content.length;
+      result.info.source = filePath;
 
       // 2. 检查文件大小
       if (content.length > this.options.maxFileSize) {

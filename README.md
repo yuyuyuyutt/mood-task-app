@@ -11,3 +11,5 @@ This template should help get you started developing with Tauri, React and Types
 **0.1vs**：完成了主体框架的架构和设计
 
 **0.11vs**：接入了本地的**SQLite**数据库
+
+**0.15vs**：完善了插件系统，现在有包含沙箱的安全机制

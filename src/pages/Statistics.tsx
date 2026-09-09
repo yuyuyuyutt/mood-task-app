@@ -6,39 +6,45 @@ import {
   FaChartPie, 
   FaCalendarAlt,
   FaCheckCircle,
-  FaBolt,
   FaList,
   FaSmile,
   FaFrown,
   FaMeh,
-  FaArrowUp,
-  FaArrowDown
+  FaArrowUp
 } from 'react-icons/fa';
 import { api } from '../api';
 import { Task, Mood } from '../types';
+import { usePluginHost } from '../plugins/runtime';
+import { recordsToMoods } from '../plugins/pages/moodData';
 
 export const Statistics: React.FC = () => {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [moods, setMoods] = useState<Mood[]>([]);
-  const [setStatistics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const { plugins, dataStore } = usePluginHost();
+
+  // 心情数据由「心情日记」插件提供（命名空间 mood）；未启用时优雅降级为空
+  const moodPluginEnabled = plugins.some((p) => p.id === 'mood-diary' && p.enabled);
 
   // 从数据库加载数据
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        // 并行加载所有数据
-        const [tasksData, moodsData, statsData] = await Promise.all([
-          api.getTasks(),
-          api.getMoods(),
-          api.getStatistics()
-        ]);
-
+        const [tasksData] = await Promise.all([api.getTasks()]);
         setTasks(tasksData);
+
+        let moodsData: Mood[] = [];
+        if (moodPluginEnabled) {
+          try {
+            const records = await dataStore.list('core', 'mood', 'entries');
+            moodsData = recordsToMoods(records);
+          } catch (err) {
+            console.warn('读取心情插件数据失败:', err);
+          }
+        }
         setMoods(moodsData);
-        setStatistics(statsData);
       } catch (error) {
         console.error('加载统计数据失败:', error);
       } finally {
@@ -47,18 +53,13 @@ export const Statistics: React.FC = () => {
     };
 
     loadData();
-  }, [timeRange]);
+  }, [timeRange, moodPluginEnabled, dataStore]);
 
   // 计算统计信息
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter(task => task.status === 'completed').length;
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-  
-  // 计算平均能量消耗
-  const avgEnergy = tasks.length > 0 
-    ? Math.round(tasks.reduce((sum, task) => sum + (task.energy_cost || 0), 0) / tasks.length) 
-    : 0;
-  
+
   // 根据mood_score转换心情类型
   const getMoodType = (score: number): 'happy' | 'neutral' | 'sad' => {
     if (score >= 4) return 'happy';
@@ -128,7 +129,6 @@ export const Statistics: React.FC = () => {
     return {
       tasksChange: '+12%',
       completionChange: '+8%',
-      energyChange: '-3%',
       moodsChange: '+5%'
     };
   };
@@ -153,17 +153,6 @@ export const Statistics: React.FC = () => {
       completed: dailyCompletion[bestDay]?.completed || 0,
       rate: Math.round(maxCompletion)
     } : null;
-  };
-
-  // 找到能量消耗最高的任务
-  const getHighestEnergyTask = () => {
-    if (tasks.length === 0) return null;
-    
-    const highestTask = tasks.reduce((max, task) => {
-      return (task.energy_cost || 0) > (max.energy_cost || 0) ? task : max;
-    });
-    
-    return highestTask;
   };
 
   if (loading) {
@@ -249,25 +238,6 @@ export const Statistics: React.FC = () => {
         <div className="bg-white rounded-xl shadow-sm p-6">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm text-gray-600">平均能量消耗</div>
-              <div className="text-3xl font-bold text-gray-900 mt-2">{avgEnergy} ⚡</div>
-            </div>
-            <div className="p-3 bg-yellow-50 rounded-lg">
-              <FaBolt className="w-6 h-6 text-yellow-600" />
-            </div>
-          </div>
-          <div className="mt-4">
-            <div className="flex items-center text-sm">
-              <FaArrowDown className="w-4 h-4 text-red-500 mr-1" />
-              <span className="text-red-500">{trend.energyChange}</span>
-              <span className="text-gray-500 ml-2">相比上周</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <div className="flex items-center justify-between">
-            <div>
               <div className="text-sm text-gray-600">心情记录</div>
               <div className="text-3xl font-bold text-gray-900 mt-2">{moods.length}</div>
             </div>
@@ -282,6 +252,11 @@ export const Statistics: React.FC = () => {
               <span className="text-gray-500 ml-2">相比上周</span>
             </div>
           </div>
+          {!moodPluginEnabled && (
+            <p className="mt-3 text-xs text-gray-400">
+              心情数据由「心情日记」插件提供 · 当前未安装
+            </p>
+          )}
         </div>
       </div>
 
@@ -295,22 +270,29 @@ export const Statistics: React.FC = () => {
           </div>
           
           <div className="space-y-4">
-            {Object.entries(moodDistribution).map(([mood, count]) => (
-              <div key={mood} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 flex items-center justify-center bg-white rounded-lg mr-3">
-                    {getMoodIcon(mood)}
-                  </div>
-                  <div>
-                    <div className="font-medium text-gray-900">{getMoodLabel(mood)}</div>
-                    <div className="text-sm text-gray-500">{count} 次记录</div>
-                  </div>
-                </div>
-                <div className="text-lg font-semibold text-gray-900">
-                  {Math.round((count / moods.length) * 100)}%
-                </div>
+            {moods.length === 0 ? (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                暂无心情数据
+                {!moodPluginEnabled && '（未安装「心情日记」插件）'}
               </div>
-            ))}
+            ) : (
+              Object.entries(moodDistribution).map(([mood, count]) => (
+                <div key={mood} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 flex items-center justify-center bg-white rounded-lg mr-3">
+                      {getMoodIcon(mood)}
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-900">{getMoodLabel(mood)}</div>
+                      <div className="text-sm text-gray-500">{count} 次记录</div>
+                    </div>
+                  </div>
+                  <div className="text-lg font-semibold text-gray-900">
+                    {Math.round((count / moods.length) * 100)}%
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           <div className="mt-6 pt-6 border-t border-gray-200">
@@ -407,7 +389,6 @@ export const Statistics: React.FC = () => {
                   <th className="pb-3">总任务</th>
                   <th className="pb-3">已完成</th>
                   <th className="pb-3">完成率</th>
-                  <th className="pb-3">平均能量</th>
                 </tr>
               </thead>
               <tbody>
@@ -415,11 +396,6 @@ export const Statistics: React.FC = () => {
                   .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
                   .slice(0, 10) // 只显示最近10天
                   .map(([date, stats]) => {
-                    const dayTasks = tasks.filter(t => t.created_at.startsWith(date));
-                    const dayEnergy = dayTasks.length > 0 
-                      ? Math.round(dayTasks.reduce((sum, t) => sum + (t.energy_cost || 0), 0) / dayTasks.length)
-                      : 0;
-                    
                     return (
                       <tr key={date} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-4">
@@ -449,12 +425,6 @@ export const Statistics: React.FC = () => {
                             <span className="font-medium">
                               {Math.round((stats.completed / stats.total) * 100)}%
                             </span>
-                          </div>
-                        </td>
-                        <td className="py-4">
-                          <div className="flex items-center">
-                            <FaBolt className="w-4 h-4 text-yellow-500 mr-2" />
-                            <span className="font-medium">{dayEnergy} ⚡</span>
                           </div>
                         </td>
                       </tr>
@@ -495,15 +465,9 @@ export const Statistics: React.FC = () => {
             </div>
           </div>
           <div>
-            <div className="text-sm text-gray-600 mb-1">能量最高任务</div>
-            {getHighestEnergyTask() ? (
-              <>
-                <div className="text-lg font-bold text-gray-900">{getHighestEnergyTask()?.title}</div>
-                <div className="text-sm text-gray-500">消耗 {getHighestEnergyTask()?.energy_cost || 0} ⚡ 能量</div>
-              </>
-            ) : (
-              <div className="text-gray-500">暂无数据</div>
-            )}
+            <div className="text-sm text-gray-600 mb-1">累计完成</div>
+            <div className="text-lg font-bold text-gray-900">{completedTasks} 个任务</div>
+            <div className="text-sm text-gray-500">完成率 {completionRate}%</div>
           </div>
         </div>
       </div>

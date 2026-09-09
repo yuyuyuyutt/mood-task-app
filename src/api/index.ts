@@ -172,9 +172,7 @@ export const api = {
       const completedTasks = tasks.filter(t => t.status === 'completed').length;
       const totalTasks = tasks.length;
       const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
-      
-      const totalEnergy = tasks.reduce((sum, task) => sum + (task.energy_cost || 0), 0);
-      
+
       const avgMood = moods.length > 0 
         ? moods.reduce((sum, mood) => sum + mood.mood_score, 0) / moods.length 
         : 0;
@@ -202,7 +200,6 @@ export const api = {
           completed: completedTasks,
           total: totalTasks,
           completionRate,
-          totalEnergy,
         },
         moods: {
           average: Math.round(avgMood * 10) / 10,

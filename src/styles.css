@@ -789,3 +789,127 @@ button:hover {
 .plugin-upload-zone.drag-over {
   @apply border-primary-500 dark:border-primary-400 bg-primary-100 dark:bg-primary-900/20;
 }
+
+/* ================= 任务卡片进出场动画 ================= */
+.task-enter {
+  animation: taskEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.task-leave {
+  animation: taskLeave 0.2s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes taskEnter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes taskLeave {
+  to {
+    opacity: 0;
+    transform: scale(0.9);
+    filter: blur(3px);
+  }
+}
+
+/* 新任务按钮入场微动（页面挂载时） */
+.cta-pulse {
+  animation: ctaPulse 2.4s ease-out 0.6s 1;
+}
+
+@keyframes ctaPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.12);
+  }
+  100% {
+    box-shadow: 0 0 0 16px rgba(0, 0, 0, 0);
+  }
+}
+
+/* ================= 时段面板：选中格弹跳 + 面板滑入 ================= */
+.cell-pop {
+  animation: cellPop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes cellPop {
+  0% {
+    transform: scale(0.96);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.panel-in {
+  animation: panelIn 0.26s ease-out both;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ================= 完成任务："撕便签"离场动画 ================= */
+.task-tear {
+  animation: tearAway 0.42s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes tearAway {
+  0% {
+    transform: rotate(0deg);
+    opacity: 1;
+  }
+  15% {
+    transform: rotate(-2.5deg) translateX(-6px);
+    opacity: 1;
+  }
+  40% {
+    transform: rotate(-8deg) translateY(4px) scale(0.98);
+    opacity: 0.85;
+  }
+  100% {
+    transform: rotate(-16deg) translateY(48px) scale(0.92);
+    opacity: 0;
+  }
+}
+
+/* 撕下的第一帧闪现胶条感（装饰） */
+.task-tear::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: 14%;
+  width: 44px;
+  height: 10px;
+  background: rgba(250, 204, 21, 0.35);
+  opacity: 0.9;
+  animation: tearGlue 0.42s ease-out forwards;
+}
+
+@keyframes tearGlue {
+  0%,
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}

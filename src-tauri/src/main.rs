@@ -8,6 +8,12 @@ use commands::{
     delete_task,
     get_moods,
     get_tasks,
+    plugin_data_clear,
+    plugin_data_clear_namespace,
+    plugin_data_delete,
+    plugin_data_get,
+    plugin_data_list,
+    plugin_data_put,
     save_mood,
     update_habit_completion, // 新增习惯完成更新
     update_task,
@@ -44,6 +50,13 @@ fn main() {
             get_moods,
             save_mood,
             delete_mood,
+            // 插件命名空间数据命令
+            plugin_data_list,
+            plugin_data_get,
+            plugin_data_put,
+            plugin_data_delete,
+            plugin_data_clear,
+            plugin_data_clear_namespace,
         ])
         .run(tauri::generate_context!())
         .expect("运行Tauri应用失败");

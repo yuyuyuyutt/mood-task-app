@@ -158,6 +158,45 @@ export const PluginDetailsModal: React.FC<PluginDetailsModalProps> = ({
               </div>
             )}
 
+            {/* 能力信息 */}
+            {manifest.capabilities && (
+              <div className="mb-8">
+                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+                  <FaCogs className="w-4 h-4 mr-2" />
+                  插件能力
+                </h4>
+                <div className="space-y-2">
+                  {manifest.capabilities.page && (
+                    <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+                      <p className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+                        新增页面：「{manifest.capabilities.page.title}」 → {manifest.capabilities.page.path}
+                      </p>
+                    </div>
+                  )}
+                  {manifest.capabilities.data && (
+                    <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+                      <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300 mb-1">
+                        读写长期数据
+                      </p>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono">
+                        namespace: {manifest.capabilities.data.namespace} · collections:{' '}
+                        {(manifest.capabilities.data.collections ?? []).join(', ')} · ops:{' '}
+                        {(manifest.capabilities.data.operations ?? ['read']).join('/')} · 卸载保留{' '}
+                        {manifest.capabilities.data.retentionDays ?? 3} 天
+                      </p>
+                    </div>
+                  )}
+                  {manifest.capabilities.theme && (
+                    <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                      <p className="text-sm font-medium text-purple-700 dark:text-purple-300">
+                        界面主题：{manifest.capabilities.theme.mode === 'dark' ? '深色' : '浅色'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* 兼容性检查 */}
             <div className="mb-8">
               <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">

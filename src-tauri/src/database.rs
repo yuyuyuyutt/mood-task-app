@@ -96,6 +96,20 @@ fn init_tables(pool: &DbPool) -> Result<(), String> {
     )
     .map_err(|e: rusqlite::Error| format!("创建索引失败: {}", e))?;
 
+    // 插件命名空间数据表（插件长期数据：按 namespace/collection 隔离）
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS plugin_data (
+            namespace TEXT NOT NULL,
+            collection TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (namespace, collection, key)
+        )",
+        [],
+    )
+    .map_err(|e: rusqlite::Error| format!("创建插件数据表失败: {}", e))?;
+
     Ok(())
 }
 

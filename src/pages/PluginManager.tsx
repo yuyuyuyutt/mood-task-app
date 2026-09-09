@@ -1,264 +1,173 @@
 // src/pages/PluginManager.tsx
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  FaPlug, 
-  FaPlus, 
-  FaTrash, 
-  FaToggleOn, 
-  FaToggleOff, 
-  FaInfoCircle,
+// 插件管理页：数据来自插件注册表（持久化），而非 mock。
+// 性能设计（大量插件场景）：
+// - 搜索输入经 useDeferredValue 降级 + useMemo 过滤：键入不卡顿
+// - 行组件 React.memo + 稳定对象引用：单个插件变更不重渲染其他行
+// - 条目超过阈值时启用窗口化渲染（useWindowedList），只渲染可见行
+// - 激活指标实时展示，直观看到宿主批量激活耗时
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import {
+  FaPlug,
+  FaPlus,
+  FaToggleOn,
+  FaToggleOff,
   FaCheckCircle,
-  FaExclamationTriangle,
+  FaExclamationCircle,
   FaSpinner,
   FaCode,
-  FaShieldAlt,
   FaBoxOpen,
-  FaExclamationCircle,
   FaStore,
-  FaUser,
-  FaCalendar,
-  FaNetworkWired,
-  FaFolderOpen,
-  FaDesktop,
-  FaPalette
+  FaMoon,
+  FaSmile,
+  FaBorderAll,
+  FaBolt,
 } from 'react-icons/fa';
-import { PluginParser, parsePluginFile, type PluginManifest, type ParseResult } from '../plugins/parser';
+import { parsePluginFile, parsePluginFromURL, type PluginManifest } from '../plugins/parser';
+import { usePluginHost, type InstalledPlugin } from '../plugins/runtime';
+import { BUILTIN_PLUGINS, compareVersions, getBuiltinVersion } from '../plugins/builtin';
 import { PluginInstallModal } from '../components/plugins/PluginInstallModal';
 import { PluginDetailsModal } from '../components/plugins/PluginDetailsModal';
+import { PluginListItem } from '../components/plugins/PluginListItem';
+import { UninstallConfirmModal } from '../components/plugins/UninstallConfirmModal';
+import { TrashPanel } from '../components/plugins/TrashPanel';
+import { useWindowedList } from '../hooks/useWindowedList';
 
-// 统一的插件类型接口
-interface PluginItem {
-  id: string;
-  name: string;
-  version: string;
-  author: string;
-  description: string;
-  enabled: boolean;
-  installedAt: string;
-  manifest: PluginManifest;
-}
-
-// 辅助函数：创建完整的插件对象
-const createPluginItem = (manifest: PluginManifest, enabled: boolean = true): PluginItem => {
-  const now = new Date();
-  const formattedDate = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
-  
-  return {
-    id: manifest.metadata.id || manifest.metadata.name.toLowerCase().replace(/\s+/g, '-'),
-    name: manifest.metadata.name,
-    version: manifest.metadata.version,
-    author: manifest.metadata.author,
-    description: manifest.metadata.description,
-    enabled,
-    installedAt: formattedDate,
-    manifest
-  };
+const BUILTIN_ICON: Record<string, React.ReactNode> = {
+  'dark-theme': <FaMoon className="w-5 h-5 text-indigo-400" />,
+  'mood-diary': <FaSmile className="w-5 h-5 text-amber-400" />,
+  'wireframe': <FaBorderAll className="w-5 h-5 text-gray-700 dark:text-gray-300" />,
 };
 
-// 修正后的 mock 数据，确保类型一致
-const mockPlugins: PluginItem[] = [
-  createPluginItem({
-    metadata: {
-      id: 'weather-widget',
-      name: '天气小部件',
-      version: '1.2.0',
-      author: '气象局',
-      description: '实时显示天气信息的小部件',
-      compatibility: {
-        minCoreVersion: '1.0.0',
-        maxCoreVersion: '2.0.0',
-        testedVersions: ['1.0.0', '1.5.0']
-      },
-      createdAt: '2024-01-15T00:00:00Z',
-      signature: undefined,
-      updatedAt: undefined,
-      homepage: 'https://example.com',
-      license: 'MIT'
-    },
-    permissions: {
-      network: {
-        domains: ['api.weather.com'],
-        protocols: ['https']
-      },
-      fs: undefined,
-      system: undefined,
-      ui: undefined,
-      api: undefined
-    },
-    frontend: {
-      entry: './index.jsx',
-      type: 'widget'
-    },
-    dependencies: undefined,
-    backend: undefined,
-    assets: undefined,
-    hooks: undefined
-  }, true),
-  
-  createPluginItem({
-    metadata: {
-      id: 'calendar-integration',
-      name: '日历集成',
-      version: '1.0.3',
-      author: '日程管理团队',
-      description: '将任务与系统日历同步',
-      compatibility: {
-        minCoreVersion: '1.0.0',
-        maxCoreVersion: undefined,
-        testedVersions: []
-      },
-      createdAt: '2024-01-10T00:00:00Z',
-      signature: undefined,
-      updatedAt: undefined,
-      homepage: undefined,
-      license: 'GPL-3.0'
-    },
-    permissions: {
-      fs: {
-        read: ['/data/calendar'],
-        write: ['/data/calendar']
-      },
-      network: undefined,
-      system: undefined,
-      ui: undefined,
-      api: undefined
-    },
-    frontend: {
-      entry: './calendar.jsx',
-      type: 'widget'
-    },
-    dependencies: undefined,
-    backend: undefined,
-    assets: undefined,
-    hooks: undefined
-  }, false),
-  
-  createPluginItem({
-    metadata: {
-      id: 'dark-theme-enhancer',
-      name: '深色主题增强',
-      version: '2.1.0',
-      author: '主题设计师',
-      description: '提供更丰富的深色主题选项',
-      compatibility: {
-        minCoreVersion: '1.0.0',
-        maxCoreVersion: '3.0.0',
-        testedVersions: ['2.0.0', '2.1.0']
-      },
-      createdAt: '2024-01-05T00:00:00Z',
-      signature: undefined,
-      updatedAt: undefined,
-      homepage: 'https://theme.example.com',
-      license: 'Apache-2.0'
-    },
-    permissions: {
-      ui: {
-        overlay: true,
-        notification: false,
-        contextMenu: false,
-        keyboardShortcuts: undefined
-      },
-      fs: undefined,
-      network: undefined,
-      system: undefined,
-      api: undefined
-    },
-    frontend: {
-      entry: './theme.jsx',
-      type: 'widget'
-    },
-    dependencies: undefined,
-    backend: undefined,
-    assets: undefined,
-    hooks: undefined
-  }, true)
-];
+const BUILTIN_DESC: Record<string, string> = {
+  'dark-theme': '深色外观由插件系统托管，安装后可在设置页切换',
+  'mood-diary': '心情日历 / 打分 / 回顾，数据按命名空间写入本地数据库',
+  'wireframe': '墨黑 × 酸性荧光绿的沙箱代码主题：由插件 JS 动态生成设计令牌与整站样式',
+};
 
 export const PluginManager: React.FC = () => {
-  const [plugins, setPlugins] = useState<PluginItem[]>(mockPlugins);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const {
+    ready,
+    plugins,
+    metrics,
+    coreVersion,
+    tombstones,
+    installFromManifest,
+    installFromToml,
+    uninstall,
+    purgePluginData,
+    setEnabled,
+    getPlugin,
+  } = usePluginHost();
+
   const [installModalOpen, setInstallModalOpen] = useState(false);
-  const [selectedPlugin, setSelectedPlugin] = useState<PluginItem | null>(null);
+  const [selectedPlugin, setSelectedPlugin] = useState<InstalledPlugin | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [uninstallTarget, setUninstallTarget] = useState<InstalledPlugin | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
-  const [parsingPlugin, setParsingPlugin] = useState<ParseResult | null>(null);
+  const [parsingPlugin, setParsingPlugin] = useState<Awaited<ReturnType<typeof parsePluginFile>> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [installingBuiltin, setInstallingBuiltin] = useState<string | null>(null);
+  const [trashBusyId, setTrashBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  // 过滤插件
-  const filteredPlugins = plugins.filter(plugin => {
-    const matchesSearch = 
-      plugin.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      plugin.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      plugin.author.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    if (filter === 'all') return matchesSearch;
-    if (filter === 'enabled') return matchesSearch && plugin.enabled;
-    if (filter === 'disabled') return matchesSearch && !plugin.enabled;
-    
-    return matchesSearch;
-  });
+  // ---- 过滤与统计（memo 化，避免每次渲染重算；搜索经 deferred 降级） ----
+  const deferredQuery = useDeferredValue(searchQuery);
 
-  // 切换插件启用状态
-  const togglePlugin = useCallback((pluginId: string) => {
-    setPlugins(prev => prev.map(plugin => 
-      plugin.id === pluginId 
-        ? { ...plugin, enabled: !plugin.enabled }
-        : plugin
-    ));
-    const plugin = plugins.find(p => p.id === pluginId);
-    setSuccess(`插件 "${plugin?.name}" 已${plugin?.enabled ? '禁用' : '启用'}`);
-  }, [plugins]);
+  const filteredPlugins = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    return plugins.filter((plugin) => {
+      const matchesSearch =
+        !q ||
+        plugin.name.toLowerCase().includes(q) ||
+        plugin.description.toLowerCase().includes(q) ||
+        plugin.author.toLowerCase().includes(q);
+      if (filter === 'enabled') return matchesSearch && plugin.enabled;
+      if (filter === 'disabled') return matchesSearch && !plugin.enabled;
+      return matchesSearch;
+    });
+  }, [plugins, deferredQuery, filter]);
 
-  // 卸载插件
-  const uninstallPlugin = useCallback((pluginId: string) => {
-    if (window.confirm('确定要卸载此插件吗？此操作不可撤销。')) {
-      setPlugins(prev => prev.filter(plugin => plugin.id !== pluginId));
-      setSuccess('插件已卸载');
-    }
-  }, []);
+  const stats = useMemo(
+    () => ({
+      total: plugins.length,
+      enabled: plugins.filter((p) => p.enabled).length,
+      disabled: plugins.filter((p) => !p.enabled).length,
+    }),
+    [plugins],
+  );
 
-  // 查看插件详情
-  const viewPluginDetails = useCallback((plugin: PluginItem) => {
+  // ---- 窗口化渲染：大量插件时只渲染可见行 ----
+  const { containerRef, windowed, slice, padTop, padBottom, itemHeight } = useWindowedList(
+    filteredPlugins,
+    { itemHeight: 232, threshold: 60 },
+  );
+
+  // ---- 操作（回调引用稳定，配合行组件 memo） ----
+
+  const viewPluginDetails = useCallback((plugin: InstalledPlugin) => {
     setSelectedPlugin(plugin);
     setDetailsModalOpen(true);
   }, []);
 
-  // 安装新插件
-  const handleInstallPlugin = useCallback((manifest: PluginManifest) => {
-    const newPlugin = createPluginItem(manifest, true);
-    
-    setPlugins(prev => {
-      // 检查是否已存在同名插件
-      const existingIndex = prev.findIndex(p => p.id === newPlugin.id);
-      if (existingIndex >= 0) {
-        const updated = [...prev];
-        updated[existingIndex] = newPlugin;
-        return updated;
-      }
-      return [...prev, newPlugin];
+  const handleTogglePlugin = useCallback(
+    (id: string) => {
+      const plugin = getPlugin(id);
+      if (!plugin) return;
+      const next = !plugin.enabled;
+      void setEnabled(id, next).then(() => {
+        setSuccess(`插件 "${plugin.name}" 已${next ? '启用' : '禁用'}`);
+      });
+    },
+    [getPlugin, setEnabled],
+  );
+
+  // 卸载：弹出保留期说明确认框（不再使用 window.confirm）
+  const handleUninstallPlugin = useCallback((id: string) => {
+    const plugin = getPlugin(id);
+    if (!plugin) return;
+    setUninstallTarget(plugin);
+  }, [getPlugin]);
+
+  const confirmUninstall = useCallback(() => {
+    if (!uninstallTarget) return;
+    const name = uninstallTarget.name;
+    void uninstall(uninstallTarget.id).then(() => {
+      setSuccess(
+        `插件 "${name}" 已卸载${
+          uninstallTarget.manifest.capabilities?.data
+            ? '，数据进入保留期（可在回收站查看）'
+            : ''
+        }`,
+      );
     });
+    setUninstallTarget(null);
+  }, [uninstallTarget, uninstall]);
 
-    setSuccess(`插件 "${manifest.metadata.name}" 已成功安装`);
-    setInstallModalOpen(false);
-  }, []);
+  const handleInstallPlugin = useCallback(
+    async (manifest: PluginManifest) => {
+      const res = await installFromManifest(manifest);
+      if (res.ok) {
+        setSuccess(`插件 "${res.plugin?.name}" 已成功安装${res.plugin?.enabled ? '并启用' : ''}`);
+        setInstallModalOpen(false);
+        setParsingPlugin(null);
+      } else {
+        setError(`安装失败：${res.errors.join('、')}`);
+      }
+    },
+    [installFromManifest],
+  );
 
-  // 解析插件文件
+  // 文件上传：解析（安装由弹窗确认后触发）
   const handlePluginFileUpload = useCallback(async (file: File) => {
     try {
       setLoading(true);
       setError(null);
-      
       const result = await parsePluginFile(file);
       setParsingPlugin(result);
-      
-      if (result.success && result.manifest) {
-        // 创建预览对象
-        const previewPlugin = createPluginItem(result.manifest, true);
-        setSelectedPlugin(previewPlugin);
-      } else {
-        setError('插件文件格式无效：' + result.errors.map(e => e.message).join(', '));
+      if (!result.success) {
+        setError('插件文件格式无效：' + result.errors.map((e) => e.message).join('、'));
       }
     } catch (err: any) {
       setError(`解析失败：${err.message}`);
@@ -267,51 +176,90 @@ export const PluginManager: React.FC = () => {
     }
   }, []);
 
-  // 检查插件兼容性
-  const checkCompatibility = (plugin: PluginItem): { compatible: boolean; message: string } => {
-    const minVersion = plugin.manifest.metadata.compatibility?.minCoreVersion || '1.0.0';
-    const currentVersion = '1.0.0'; // 假设当前版本
-    
-    const parseVersion = (version: string): number[] => {
-      // 移除预发布版本和构建元数据
-      const cleanVersion = version.split('-')[0].split('+')[0];
-      return cleanVersion.split('.').map(Number);
-    };
-    
+  // URL 安装：拉取并解析远程清单
+  const handleUrlFetch = useCallback(async (url: string) => {
     try {
-      const v1Parts = parseVersion(minVersion);
-      const v2Parts = parseVersion(currentVersion);
-      
-      for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
-        const part1 = v1Parts[i] || 0;
-        const part2 = v2Parts[i] || 0;
-        
-        if (part1 > part2) {
-          return { 
-            compatible: false, 
-            message: `需要系统版本 >= ${minVersion}` 
-          };
-        }
-        if (part1 < part2) {
-          return { 
-            compatible: true, 
-            message: '兼容当前版本' 
-          };
-        }
+      setLoading(true);
+      setError(null);
+      const result = await parsePluginFromURL(url);
+      setParsingPlugin(result);
+      if (!result.success) {
+        setError('插件文件格式无效：' + result.errors.map((e) => e.message).join('、'));
       }
-      
-      return { compatible: true, message: '兼容当前版本' };
-    } catch (error) {
-      return { compatible: false, message: '版本格式错误' };
+    } catch (err: any) {
+      setError(`获取插件失败：${err.message}`);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []);
 
-  // 统计信息
-  const stats = {
-    total: plugins.length,
-    enabled: plugins.filter(p => p.enabled).length,
-    disabled: plugins.filter(p => !p.enabled).length
-  };
+  // 内置插件一键安装（真实 TOML 清单 -> 解析 -> 注册 -> 宿主激活）
+  const installBuiltin = useCallback(
+    async (builtinId: string) => {
+      const builtin = BUILTIN_PLUGINS[builtinId];
+      if (!builtin) return;
+      setInstallingBuiltin(builtinId);
+      setError(null);
+      const res = await installFromToml(builtin.toml, 'builtin');
+      setInstallingBuiltin(null);
+      if (res.ok) {
+        setSuccess(`内置插件 "${res.plugin?.name}" 已安装并启用`);
+      } else {
+        setError(`安装失败：${res.errors.join('、')}`);
+      }
+    },
+    [installFromToml],
+  );
+
+  // 回收站：重新安装内置插件（保留期内自动恢复数据）
+  const handleReinstallFromTrash = useCallback(
+    async (pluginId: string) => {
+      const builtin = BUILTIN_PLUGINS[pluginId];
+      if (!builtin) {
+        setError('该插件不是内置插件，请通过"安装插件"重新安装以恢复数据');
+        return;
+      }
+      setTrashBusyId(pluginId);
+      setError(null);
+      const res = await installFromToml(builtin.toml, 'builtin');
+      setTrashBusyId(null);
+      if (res.ok) {
+        setSuccess(`已重新安装「${res.plugin?.name}」并恢复其保留数据`);
+      } else {
+        setError(`重新安装失败：${res.errors.join('、')}`);
+      }
+    },
+    [installFromToml],
+  );
+
+  // 回收站：立即清除保留数据
+  const handlePurgeFromTrash = useCallback(
+    async (pluginId: string) => {
+      if (!window.confirm('立即清除该插件的全部保留数据？此操作不可恢复。')) return;
+      setTrashBusyId(pluginId);
+      await purgePluginData(pluginId);
+      setTrashBusyId(null);
+      setSuccess('已清除保留数据');
+    },
+    [purgePluginData],
+  );
+
+  const missingBuiltins = useMemo(
+    () => Object.values(BUILTIN_PLUGINS).filter((b) => !getPlugin(b.id)),
+    [plugins, getPlugin],
+  );
+
+  // 已安装但落后于内置版本的内置插件（如 wireframe 1.0.0 -> 1.1.0）
+  const staleBuiltins = useMemo(
+    () =>
+      Object.values(BUILTIN_PLUGINS)
+        .map((b) => ({ b, installed: getPlugin(b.id), next: getBuiltinVersion(b.id) }))
+        .filter(
+          (x): x is { b: (typeof BUILTIN_PLUGINS)[string]; installed: InstalledPlugin; next: string } =>
+            !!x.installed && !!x.next && compareVersions(x.installed.version, x.next) < 0,
+        ),
+    [plugins, getPlugin],
+  );
 
   // 清除消息
   useEffect(() => {
@@ -323,14 +271,6 @@ export const PluginManager: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [success, error]);
-
-  // 权限图标映射
-  const permissionIcons: Record<string, React.ReactNode> = {
-    fs: <FaFolderOpen className="w-4 h-4 text-gray-400" />,
-    network: <FaNetworkWired className="w-4 h-4 text-gray-400" />,
-    system: <FaDesktop className="w-4 h-4 text-gray-400" />,
-    ui: <FaPalette className="w-4 h-4 text-gray-400" />
-  };
 
   return (
     <div className="space-y-6">
@@ -345,7 +285,7 @@ export const PluginManager: React.FC = () => {
             扩展应用功能，安装和管理第三方插件
           </p>
         </div>
-        
+
         <button
           onClick={() => setInstallModalOpen(true)}
           className="btn btn-primary flex items-center px-4 py-2"
@@ -354,6 +294,111 @@ export const PluginManager: React.FC = () => {
           安装插件
         </button>
       </div>
+
+      {/* 内置插件推荐（未安装的内置插件） */}
+      {missingBuiltins.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-5 py-3 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300">
+            内置插件
+          </div>
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            {missingBuiltins.map((builtin) => (
+              <div key={builtin.id} className="px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center">
+                  <div className="w-11 h-11 rounded-lg bg-gray-100 dark:bg-gray-700/60 flex items-center justify-center mr-4 flex-shrink-0">
+                    {BUILTIN_ICON[builtin.id]}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center">
+                      {builtin.name}
+                      <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-mono">
+                        {builtin.id}.toml
+                      </span>
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                      {BUILTIN_DESC[builtin.id]}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => installBuiltin(builtin.id)}
+                  disabled={installingBuiltin != null}
+                  className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-medium transition-colors flex items-center disabled:opacity-60 whitespace-nowrap"
+                >
+                  {installingBuiltin === builtin.id ? (
+                    <>
+                      <FaSpinner className="mr-2 animate-spin" />
+                      安装中...
+                    </>
+                  ) : (
+                    <>
+                      <FaPlus className="mr-2" />
+                      一键安装
+                    </>
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 内置插件可更新（已安装版本落后于内置清单） */}
+      {staleBuiltins.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-5 py-3 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300">
+            内置插件更新
+          </div>
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            {staleBuiltins.map(({ b, installed, next }) => (
+              <div key={b.id} className="px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center">
+                  <div className="w-11 h-11 rounded-lg bg-gray-100 dark:bg-gray-700/60 flex items-center justify-center mr-4 flex-shrink-0">
+                    {BUILTIN_ICON[b.id]}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center">
+                      {b.name}
+                      <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">
+                        v{installed.version} → v{next}
+                      </span>
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                      {BUILTIN_DESC[b.id]}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => installBuiltin(b.id)}
+                  disabled={installingBuiltin != null}
+                  className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-medium transition-colors flex items-center disabled:opacity-60 whitespace-nowrap"
+                >
+                  {installingBuiltin === b.id ? (
+                    <>
+                      <FaSpinner className="mr-2 animate-spin" />
+                      更新中...
+                    </>
+                  ) : (
+                    <>
+                      <FaPlus className="mr-2" />
+                      更新到 v{next}
+                    </>
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 回收站：卸载后保留期内的数据 */}
+      <TrashPanel
+        tombstones={tombstones}
+        busyId={trashBusyId}
+        builtinIds={new Set(Object.keys(BUILTIN_PLUGINS))}
+        onReinstall={handleReinstallFromTrash}
+        onPurge={handlePurgeFromTrash}
+      />
 
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -368,7 +413,7 @@ export const PluginManager: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
           <div className="flex items-center">
             <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center mr-4">
@@ -380,7 +425,7 @@ export const PluginManager: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
           <div className="flex items-center">
             <div className="w-12 h-12 rounded-lg bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center mr-4">
@@ -403,7 +448,7 @@ export const PluginManager: React.FC = () => {
           </div>
         </div>
       )}
-      
+
       {success && (
         <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
           <div className="flex items-center">
@@ -428,7 +473,7 @@ export const PluginManager: React.FC = () => {
               <FaCode className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             </div>
           </div>
-          
+
           <div className="flex space-x-2">
             <button
               onClick={() => setFilter('all')}
@@ -465,11 +510,21 @@ export const PluginManager: React.FC = () => {
       </div>
 
       {/* 插件列表 */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
-        {loading ? (
+      <div
+        ref={containerRef}
+        className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm ${
+          windowed ? 'max-h-[70vh] overflow-y-auto' : 'overflow-hidden'
+        }`}
+      >
+        {!ready ? (
           <div className="flex flex-col items-center justify-center p-12">
             <FaSpinner className="w-8 h-8 text-primary-500 animate-spin mb-4" />
             <p className="text-gray-600 dark:text-gray-400">加载插件中...</p>
+          </div>
+        ) : loading ? (
+          <div className="flex flex-col items-center justify-center p-12">
+            <FaSpinner className="w-8 h-8 text-primary-500 animate-spin mb-4" />
+            <p className="text-gray-600 dark:text-gray-400">解析插件清单中...</p>
           </div>
         ) : filteredPlugins.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center">
@@ -489,142 +544,37 @@ export const PluginManager: React.FC = () => {
             </button>
           </div>
         ) : (
-          <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            {filteredPlugins.map((plugin) => {
-              const compatibility = checkCompatibility(plugin);
-              const hasPermissions = plugin.manifest.permissions && 
-                Object.values(plugin.manifest.permissions).some(v => v !== undefined);
-              
-              return (
-                <div key={plugin.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center mb-2">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate mr-3">
-                          {plugin.name}
-                        </h3>
-                        <span className="text-sm font-medium px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-                          v{plugin.version}
-                        </span>
-                        {plugin.enabled ? (
-                          <span className="text-sm font-medium px-2 py-1 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 ml-2">
-                            已启用
-                          </span>
-                        ) : (
-                          <span className="text-sm font-medium px-2 py-1 rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 ml-2">
-                            已禁用
-                          </span>
-                        )}
-                      </div>
-                      
-                      <p className="text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
-                        {plugin.description}
-                      </p>
-                      
-                      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
-                        <span className="flex items-center">
-                          <FaCode className="w-3 h-3 mr-1" />
-                          ID: {plugin.id}
-                        </span>
-                        <span className="flex items-center">
-                          <FaUser className="w-3 h-3 mr-1" />
-                          作者: {plugin.author}
-                        </span>
-                        <span className="flex items-center">
-                          <FaCalendar className="w-3 h-3 mr-1" />
-                          安装于: {plugin.installedAt}
-                        </span>
-                        {hasPermissions && (
-                          <span className="flex items-center">
-                            <FaShieldAlt className="w-3 h-3 mr-1" />
-                            {Object.keys(plugin.manifest.permissions || {}).filter(k => plugin.manifest.permissions![k as keyof typeof plugin.manifest.permissions] !== undefined).length} 项权限
-                          </span>
-                        )}
-                        {compatibility.compatible ? (
-                          <span className="flex items-center text-green-600 dark:text-green-400">
-                            <FaCheckCircle className="w-3 h-3 mr-1" />
-                            {compatibility.message}
-                          </span>
-                        ) : (
-                          <span className="flex items-center text-red-600 dark:text-red-400">
-                            <FaExclamationTriangle className="w-3 h-3 mr-1" />
-                            {compatibility.message}
-                          </span>
-                        )}
-                      </div>
-                      
-                      {/* 权限标签 */}
-                      {hasPermissions && (
-                        <div className="flex flex-wrap gap-2 mt-3">
-                          {plugin.manifest.permissions?.fs && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
-                              <FaFolderOpen className="w-3 h-3 mr-1" />
-                              文件系统
-                            </span>
-                          )}
-                          {plugin.manifest.permissions?.network && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
-                              <FaNetworkWired className="w-3 h-3 mr-1" />
-                              网络访问
-                            </span>
-                          )}
-                          {plugin.manifest.permissions?.system && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
-                              <FaDesktop className="w-3 h-3 mr-1" />
-                              系统功能
-                            </span>
-                          )}
-                          {plugin.manifest.permissions?.ui && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
-                              <FaPalette className="w-3 h-3 mr-1" />
-                              界面控制
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <button
-                        onClick={() => viewPluginDetails(plugin)}
-                        className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center justify-center"
-                      >
-                        <FaInfoCircle className="mr-2" />
-                        详情
-                      </button>
-                      <button
-                        onClick={() => togglePlugin(plugin.id)}
-                        className={`px-4 py-2 rounded-lg transition-colors flex items-center justify-center ${
-                          plugin.enabled
-                            ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-200 dark:hover:bg-yellow-800/40'
-                            : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-800/40'
-                        }`}
-                      >
-                        {plugin.enabled ? (
-                          <>
-                            <FaToggleOff className="mr-2" />
-                            禁用
-                          </>
-                        ) : (
-                          <>
-                            <FaToggleOn className="mr-2" />
-                            启用
-                          </>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => uninstallPlugin(plugin.id)}
-                        className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-800/30 transition-colors flex items-center justify-center"
-                      >
-                        <FaTrash className="mr-2" />
-                        卸载
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <>
+            {/* 运行指标条 */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-xs text-gray-500 dark:text-gray-400">
+              <span className="flex items-center">
+                <FaBolt className="w-3 h-3 mr-1 text-primary-500" />
+                核心 v{coreVersion}
+              </span>
+              <span>启用 {stats.enabled}/{stats.total}</span>
+              <span>激活 {metrics.activated} 个插件</span>
+              {metrics.lastActivationMs > 0 && (
+                <span>最近批量激活耗时 {metrics.lastActivationMs}ms</span>
+              )}
+              {windowed && <span className="text-primary-500 font-medium">窗口化渲染已启用</span>}
+            </div>
+
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              <div style={{ paddingTop: padTop, paddingBottom: padBottom }}>
+                {slice.map((plugin) => (
+                  <PluginListItem
+                    key={plugin.id}
+                    plugin={plugin}
+                    onDetails={viewPluginDetails}
+                    onToggle={handleTogglePlugin}
+                    onUninstall={handleUninstallPlugin}
+                    windowed={windowed}
+                    itemHeight={itemHeight}
+                  />
+                ))}
+              </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -655,6 +605,7 @@ export const PluginManager: React.FC = () => {
         onClose={() => setInstallModalOpen(false)}
         onInstall={handleInstallPlugin}
         onFileUpload={handlePluginFileUpload}
+        onFetchUrl={handleUrlFetch}
         parsingResult={parsingPlugin}
         loading={loading}
       />
@@ -665,13 +616,20 @@ export const PluginManager: React.FC = () => {
           isOpen={detailsModalOpen}
           onClose={() => setDetailsModalOpen(false)}
           plugin={selectedPlugin}
-          onToggle={() => togglePlugin(selectedPlugin.id)}
+          onToggle={() => handleTogglePlugin(selectedPlugin.id)}
           onUninstall={() => {
-            uninstallPlugin(selectedPlugin.id);
+            handleUninstallPlugin(selectedPlugin.id);
             setDetailsModalOpen(false);
           }}
         />
       )}
+
+      {/* 卸载确认（含数据保留期说明） */}
+      <UninstallConfirmModal
+        plugin={uninstallTarget}
+        onConfirm={confirmUninstall}
+        onCancel={() => setUninstallTarget(null)}
+      />
     </div>
   );
 };

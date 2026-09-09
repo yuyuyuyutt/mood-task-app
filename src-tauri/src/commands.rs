@@ -2,6 +2,7 @@
 use crate::database::{CreateMood, CreateTask, DbPool, Mood, Task};
 use chrono;
 use rusqlite::params;
+use serde::{Deserialize, Serialize};
 use serde_json;
 use tauri::State;
 
@@ -270,4 +271,159 @@ pub fn delete_mood(state: State<AppState>, id: i64) -> Result<usize, String> {
         .map_err(|e: rusqlite::Error| e.to_string())?;
 
     Ok(rows_affected)
+}
+
+// ============ 插件命名空间数据（长期数据，按 namespace/collection 隔离） ============
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PluginDataRecord {
+    pub key: String,
+    pub value: String,
+    pub updated_at: String,
+}
+
+fn row_to_record(row: &rusqlite::Row) -> rusqlite::Result<PluginDataRecord> {
+    Ok(PluginDataRecord {
+        key: row.get(0)?,
+        value: row.get(1)?,
+        updated_at: row.get(2)?,
+    })
+}
+
+// 列出集合内全部记录
+#[tauri::command]
+pub fn plugin_data_list(
+    state: State<AppState>,
+    namespace: String,
+    collection: String,
+) -> Result<Vec<PluginDataRecord>, String> {
+    let conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT key, value, updated_at FROM plugin_data
+             WHERE namespace = ? AND collection = ? ORDER BY updated_at DESC",
+        )
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+
+    let iter = stmt
+        .query_map(params![namespace, collection], row_to_record)
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+
+    let rows: Result<Vec<_>, rusqlite::Error> = iter.collect();
+    rows.map_err(|e: rusqlite::Error| e.to_string())
+}
+
+// 读取单条记录
+#[tauri::command]
+pub fn plugin_data_get(
+    state: State<AppState>,
+    namespace: String,
+    collection: String,
+    key: String,
+) -> Result<Option<PluginDataRecord>, String> {
+    let conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT key, value, updated_at FROM plugin_data
+             WHERE namespace = ? AND collection = ? AND key = ?",
+        )
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+
+    match stmt.query_row(params![namespace, collection, key], row_to_record) {
+        Ok(rec) => Ok(Some(rec)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+// 写入/更新记录（UPSERT）
+#[tauri::command]
+pub fn plugin_data_put(
+    state: State<AppState>,
+    namespace: String,
+    collection: String,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    let conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+
+    conn.execute(
+        "INSERT INTO plugin_data (namespace, collection, key, value, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(namespace, collection, key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = datetime('now')",
+        params![namespace, collection, key, value],
+    )
+    .map_err(|e: rusqlite::Error| e.to_string())?;
+
+    Ok(())
+}
+
+// 删除单条记录
+#[tauri::command]
+pub fn plugin_data_delete(
+    state: State<AppState>,
+    namespace: String,
+    collection: String,
+    key: String,
+) -> Result<usize, String> {
+    let conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM plugin_data WHERE namespace = ? AND collection = ? AND key = ?",
+        params![namespace, collection, key],
+    )
+    .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+// 清空集合
+#[tauri::command]
+pub fn plugin_data_clear(
+    state: State<AppState>,
+    namespace: String,
+    collection: String,
+) -> Result<usize, String> {
+    let conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM plugin_data WHERE namespace = ? AND collection = ?",
+        params![namespace, collection],
+    )
+    .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+// 清空整个命名空间（保留期到期/回收站清除用）
+#[tauri::command]
+pub fn plugin_data_clear_namespace(
+    state: State<AppState>,
+    namespace: String,
+) -> Result<usize, String> {
+    let conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM plugin_data WHERE namespace = ?",
+        params![namespace],
+    )
+    .map_err(|e: rusqlite::Error| e.to_string())
 }

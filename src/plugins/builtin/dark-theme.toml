@@ -1,0 +1,48 @@
+# ============================================================
+# 深色主题插件（内置插件）
+# ------------------------------------------------------------
+# 该插件将"深色主题"能力从主应用中解耦出来：
+#   - 安装并启用 -> 应用进入深色模式（<html class="dark">）
+#   - 禁用或卸载 -> 应用回到浅色基线，主应用不再包含任何深色逻辑
+# 插件行为完全由 [capabilities.theme] 声明式描述，由插件宿主
+# (PluginHost) 解释执行，不携带任何可执行代码。
+# ============================================================
+
+[metadata]
+id = "dark-theme"
+name = "深色主题"
+version = "1.0.0"
+author = "高山仰止核心团队"
+description = "由插件系统托管的深色主题能力：启用后应用切换为深色外观，禁用后恢复浅色基线"
+homepage = "https://example.com/plugins/dark-theme"
+license = "MIT"
+createdAt = "2025-01-01T00:00:00Z"
+updatedAt = "2025-01-01T00:00:00Z"
+
+[metadata.compatibility]
+minCoreVersion = "1.0.0"
+maxCoreVersion = "9.9.9"
+testedVersions = ["1.0.0"]
+
+[permissions.ui]
+overlay = true
+
+[frontend]
+entry = "capability://theme"
+type = "widget"
+
+[frontend.config]
+capability = "theme"
+
+# ---------------- 声明式能力：主题 ----------------
+[capabilities.theme]
+type = "theme"
+mode = "dark"
+className = "dark"
+dataAttribute = "data-theme"
+attributeValue = "dark"
+followSystem = true
+
+# 启用时可注入的自定义 CSS 变量（可选）
+# [capabilities.theme.variables]
+# "--mood-primary" = "#7c9cff"

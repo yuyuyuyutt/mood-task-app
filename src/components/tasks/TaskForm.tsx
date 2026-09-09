@@ -5,7 +5,6 @@ import { Task } from '../../types';
 import { 
   FaTimes, 
   FaCalendarAlt, 
-  FaBolt, 
   FaTag,
   FaFire,
   FaHistory,
@@ -46,7 +45,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({
   // 使用 useMemo 确保 task 引用稳定
   const stableTask = useMemo(() => task, 
     [task?.id, task?.title, task?.description, task?.priority, 
-     task?.energy_cost, task?.estimated_time, task?.due_date, 
+     task?.estimated_time, task?.due_date, 
      JSON.stringify(task?.tags), task?.status, task?.is_habit,
      task?.habit_period, task?.habit_start_date, task?.habit_end_date,
      JSON.stringify(task?.habit_completions)]);
@@ -55,7 +54,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({
     title: stableTask?.title || '',
     description: stableTask?.description || '',
     priority: stableTask?.priority || 2 as 1 | 2 | 3,
-    energy_cost: stableTask?.energy_cost || 5,
     estimated_time: stableTask?.estimated_time || 30,
     due_date: stableTask?.due_date || '',
     tags: stableTask?.tags || [] as string[],
@@ -78,7 +76,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({
         title: stableTask.title || '',
         description: stableTask.description || '',
         priority: stableTask.priority || 2,
-        energy_cost: stableTask.energy_cost || 5,
         estimated_time: stableTask.estimated_time || 30,
         due_date: stableTask.due_date || '',
         tags: stableTask.tags || [],
@@ -105,10 +102,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({
 
     if (!formData.title.trim()) {
       newErrors.title = '标题是必填项';
-    }
-
-    if (formData.energy_cost < 1 || formData.energy_cost > 10) {
-      newErrors.energy_cost = '能量消耗必须在 1 到 10 之间';
     }
 
     if (formData.estimated_time && formData.estimated_time < 1) {
@@ -156,7 +149,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({
       description: formData.description.trim() || undefined,
       status: formData.status as 'pending' | 'in_progress' | 'completed',
       priority: formData.priority,
-      energy_cost: formData.energy_cost || undefined,
       estimated_time: formData.estimated_time || undefined,
       due_date: formData.due_date || undefined,
       tags: formData.tags.length > 0 ? formData.tags : undefined,
@@ -440,32 +432,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({
                       <option value="completed">完成</option>
                     </select>
                   </div>
-                )}
-              </div>
-
-              {/* 能量消耗 */}
-              <div>
-                <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
-                  <FaBolt className="w-4 h-4 mr-2 text-yellow-500" />
-                  能量消耗 (1-10)
-                </label>
-                <div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={formData.energy_cost}
-                    onChange={(e) => setFormData({...formData, energy_cost: parseInt(e.target.value)})}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="flex justify-between mt-2">
-                    <span className="text-sm text-gray-500">低 (1)</span>
-                    <span className="font-medium">{formData.energy_cost}</span>
-                    <span className="text-sm text-gray-500">高 (10)</span>
-                  </div>
-                </div>
-                {errors.energy_cost && (
-                  <p className="mt-1 text-sm text-red-600">{errors.energy_cost}</p>
                 )}
               </div>
 
