@@ -1,5 +1,13 @@
-import { useState, useEffect } from 'react';
-import { BaseDirectory, exists, readTextFile, writeTextFile, readFile, writeFile, remove, mkdir } from '@tauri-apps/plugin-fs';
+// src/hooks/useUserProfileTauri.ts
+// 用户资料读写。桌面端落在 AppData（user_profile.json + avatars/*.jpg），
+// 浏览器开发模式退回 localStorage，两条路径对外语义一致。
+//
+// 为什么不直接静态 import @tauri-apps/plugin-fs：
+// 它的实现是 window.__TAURI_INTERNALS__.invoke(...)，浏览器里该全局不存在，
+// 调用即抛 "Cannot read properties of undefined (reading 'invoke')"。
+// 因此所有 fs 调用都收敛到 profileStore，并在 isTauriRuntime() 分支内动态 import。
+import { useCallback, useEffect, useState } from 'react';
+import { isTauriRuntime } from '../utils/runtime';
 
 interface UserProfile {
   name: string;
@@ -16,328 +24,297 @@ interface UseUserProfileReturn {
 
 const DEFAULT_USER_PROFILE: UserProfile = {
   name: '高山用户',
-  avatarFilename: null
+  avatarFilename: null,
 };
+
+const PROFILE_FILE = 'user_profile.json';
+const AVATAR_DIR = 'avatars';
+
+/** 浏览器兜底键名，沿用项目 `mood-task:<domain>:v1` 约定 */
+const LS_PROFILE_KEY = 'mood-task:user-profile:v1';
+const LS_AVATAR_KEY = 'mood-task:user-avatar:v1';
+
+const MIME_BY_EXT: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+};
+
+function mimeFromFilename(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  return MIME_BY_EXT[ext] ?? 'image/jpeg';
+}
+
+/** 分批调用 fromCharCode，避免大数组触发 "Maximum call stack size exceeded" */
+function bytesToDataUrl(bytes: Uint8Array, mime: string): string {
+  const CHUNK = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return `data:${mime};base64,${window.btoa(binary)}`;
+}
+
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+  const comma = dataUrl.indexOf(',');
+  const binary = window.atob(comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+/** 磁盘 / localStorage 里的内容都不可信，读出来一律过一遍归一化 */
+function normalizeProfile(raw: unknown): UserProfile {
+  const obj = (raw ?? {}) as Partial<UserProfile>;
+  const name = typeof obj.name === 'string' ? obj.name.trim() : '';
+  return {
+    name: name || DEFAULT_USER_PROFILE.name,
+    avatarFilename: typeof obj.avatarFilename === 'string' ? obj.avatarFilename : null,
+  };
+}
+
+/**
+ * 资料存储适配层。调用方无需感知运行环境。
+ * - Tauri：AppData/user_profile.json + AppData/avatars/*
+ * - 浏览器：localStorage（资料 JSON + 头像 data URL）
+ */
+const profileStore = {
+  async readProfile(): Promise<UserProfile | null> {
+    if (isTauriRuntime()) {
+      const { BaseDirectory, exists, readTextFile } = await import('@tauri-apps/plugin-fs');
+      const opts = { baseDir: BaseDirectory.AppData };
+      if (!(await exists(PROFILE_FILE, opts))) return null;
+      return normalizeProfile(JSON.parse(await readTextFile(PROFILE_FILE, opts)));
+    }
+    const raw = localStorage.getItem(LS_PROFILE_KEY);
+    return raw ? normalizeProfile(JSON.parse(raw)) : null;
+  },
+
+  async writeProfile(profile: UserProfile): Promise<void> {
+    const json = JSON.stringify(profile, null, 2);
+    if (isTauriRuntime()) {
+      const { BaseDirectory, mkdir, writeTextFile } = await import('@tauri-apps/plugin-fs');
+      const opts = { baseDir: BaseDirectory.AppData };
+      // recursive 在目录已存在时也可能抛，这里只为确保目录就绪，失败交给后续写入报错
+      await mkdir(AVATAR_DIR, { ...opts, recursive: true }).catch(() => undefined);
+      await writeTextFile(PROFILE_FILE, json, opts);
+      return;
+    }
+    localStorage.setItem(LS_PROFILE_KEY, json);
+  },
+
+  /** 读取头像为 data URL；没有或读取失败返回 null */
+  async readAvatar(profile: UserProfile): Promise<string | null> {
+    if (!profile.avatarFilename) return null;
+    if (isTauriRuntime()) {
+      const { BaseDirectory, exists, readFile } = await import('@tauri-apps/plugin-fs');
+      const opts = { baseDir: BaseDirectory.AppData };
+      const path = `${AVATAR_DIR}/${profile.avatarFilename}`;
+      if (!(await exists(path, opts))) return null;
+      return bytesToDataUrl(await readFile(path, opts), mimeFromFilename(profile.avatarFilename));
+    }
+    return localStorage.getItem(LS_AVATAR_KEY);
+  },
+
+  /** 写入头像，返回落盘文件名 */
+  async writeAvatar(dataUrl: string): Promise<string> {
+    const filename = `avatar_${Date.now()}.jpg`;
+    if (isTauriRuntime()) {
+      const { BaseDirectory, mkdir, writeFile } = await import('@tauri-apps/plugin-fs');
+      const opts = { baseDir: BaseDirectory.AppData };
+      await mkdir(AVATAR_DIR, { ...opts, recursive: true }).catch(() => undefined);
+      await writeFile(`${AVATAR_DIR}/${filename}`, dataUrlToBytes(dataUrl), opts);
+      return filename;
+    }
+    localStorage.setItem(LS_AVATAR_KEY, dataUrl);
+    return filename;
+  },
+
+  /** 删除头像文件；文件不存在不算失败 */
+  async removeAvatar(profile: UserProfile): Promise<void> {
+    if (isTauriRuntime()) {
+      if (!profile.avatarFilename) return;
+      const { BaseDirectory, remove } = await import('@tauri-apps/plugin-fs');
+      await remove(`${AVATAR_DIR}/${profile.avatarFilename}`, { baseDir: BaseDirectory.AppData });
+      return;
+    }
+    localStorage.removeItem(LS_AVATAR_KEY);
+  },
+};
+
+/** 压缩到最长边 300px 的 JPEG，避免头像原图直接落盘 */
+function compressImage(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      img.src = e.target?.result as string;
+
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const MAX_SIZE = 300;
+        let { width, height } = img;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          }
+        } else if (height > MAX_SIZE) {
+          width *= MAX_SIZE / height;
+          height = MAX_SIZE;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error('图片压缩失败'))),
+          'image/jpeg',
+          0.8,
+        );
+      };
+
+      img.onerror = () => reject(new Error('图片加载失败'));
+    };
+
+    reader.onerror = () => reject(new Error('文件读取失败'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === 'string'
+        ? resolve(reader.result)
+        : reject(new Error('图片编码失败'));
+    reader.onerror = () => reject(new Error('图片读取失败'));
+    reader.readAsDataURL(blob);
+  });
+}
 
 export function useUserProfileTauri(): UseUserProfileReturn {
   const [userProfile, setUserProfile] = useState<UserProfile>(DEFAULT_USER_PROFILE);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  // 初始化函数 - 确保必要的目录存在
-  const initializeAppData = async () => {
-    try {
-      // 使用 mkdir 创建目录（如果需要）
-      await mkdir('avatars', { 
-        baseDir: BaseDirectory.AppData,
-        recursive: true 
-      });
-      console.log('Avatar directory initialized');
-    } catch (error) {
-      console.warn('Avatar directory may already exist:', error);
-    }
-  };
-
-  // 检查文件是否存在并修复路径
-  const checkAndFixFilePath = async (path: string): Promise<string> => {
-    try {
-      const fileExists = await exists(path, { baseDir: BaseDirectory.AppData });
-      if (!fileExists) {
-        console.warn(`File does not exist: ${path}`);
-        
-        // 尝试修复路径
-        const fixedPath = path.replace(/\\/g, '/').replace(/\/\//g, '/');
-        const fixedExists = await exists(fixedPath, { baseDir: BaseDirectory.AppData });
-        
-        if (fixedExists) {
-          console.log(`Found file at fixed path: ${fixedPath}`);
-          return fixedPath;
-        }
-      }
-      return path;
-    } catch (error) {
-      console.error('Error checking file path:', error);
-      return path;
-    }
-  };
-
-  // 加载用户资料
-  const loadUserProfile = async () => {
-    try {
-      // 初始化目录结构
-      await initializeAppData();
-      
-      const profilePath = 'user_profile.json';
-      const profileExists = await exists(profilePath, { baseDir: BaseDirectory.AppData });
-      
-      if (profileExists) {
-        // 使用 readTextFile 读取文本文件
-        const content = await readTextFile(profilePath, { baseDir: BaseDirectory.AppData });
-        const parsed = JSON.parse(content);
-        setUserProfile(parsed);
-        
-        // 如果有头像，加载头像
-        if (parsed.avatarFilename) {
-          await loadAvatar(parsed.avatarFilename);
-        }
-      } else {
-        // 如果文件不存在，使用 writeTextFile 创建默认的配置文件
-        await saveUserProfile(DEFAULT_USER_PROFILE);
-      }
-    } catch (error: any) {
-      console.error('Failed to load user profile:', error);
-      // 尝试创建默认文件
+  /**
+   * 落盘并同步内存态。
+   * `avatarDataUrl` 显式传入时直接采用（刚上传完，无需回读磁盘）；
+   * 传 undefined 表示"按 profile.avatarFilename 去存储里读"。
+   */
+  const saveUserProfile = useCallback(
+    async (profile: UserProfile, avatarDataUrl?: string | null): Promise<void> => {
       try {
-        await saveUserProfile(DEFAULT_USER_PROFILE);
-      } catch (e) {
-        console.error('Failed to create default profile:', e);
+        await profileStore.writeProfile(profile);
+      } catch (error) {
+        console.error('保存用户资料失败:', error);
+        return;
       }
-    }
-  };
 
-  // 将 Uint8Array 转换为 Base64 字符串
-  const uint8ArrayToBase64 = (bytes: Uint8Array): string => {
-    let binary = '';
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return window.btoa(binary);
-  };
-
-  // 加载头像图片 - 使用 Base64
-  const loadAvatar = async (filename: string) => {
-    try {
-      const avatarPath = `avatars/${filename}`;
-      
-      // 检查并修复文件路径
-      const checkedPath = await checkAndFixFilePath(avatarPath);
-      
-      const avatarExists = await exists(checkedPath, { baseDir: BaseDirectory.AppData });
-      
-      if (avatarExists) {
-        // 使用 readFile 读取二进制文件
-        const bytes = await readFile(checkedPath, { baseDir: BaseDirectory.AppData });
-        
-        // 根据文件扩展名确定 MIME 类型
-        const extension = filename.split('.').pop()?.toLowerCase();
-        let mimeType = 'image/jpeg'; // 默认
-        
-        if (extension === 'png') mimeType = 'image/png';
-        else if (extension === 'gif') mimeType = 'image/gif';
-        else if (extension === 'webp') mimeType = 'image/webp';
-        else if (extension === 'svg') mimeType = 'image/svg+xml';
-        
-        // 将 Uint8Array 转换为 Base64
-        const base64 = uint8ArrayToBase64(bytes);
-        
-        // 创建 Data URL
-        const url = `data:${mimeType};base64,${base64}`;
-        setAvatarUrl(url);
-        console.log(`Avatar loaded as Base64: ${filename}`);
-      } else {
-        console.warn(`Avatar file not found: ${checkedPath}`);
-        // 如果头像文件不存在，清除头像引用
-        await saveUserProfile({
-          ...userProfile,
-          avatarFilename: null
-        });
-      }
-    } catch (error) {
-      console.error('Failed to load avatar:', error);
-      setAvatarUrl(null);
-    }
-  };
-
-  // 保存用户资料
-  const saveUserProfile = async (profile: UserProfile) => {
-    try {
-      // 使用 writeTextFile 创建或更新文本文件
-      await writeTextFile(
-        'user_profile.json', 
-        JSON.stringify(profile, null, 2), 
-        { baseDir: BaseDirectory.AppData }
-      );
       setUserProfile(profile);
-      
-      // 如果有头像，加载它
-      if (profile.avatarFilename) {
-        await loadAvatar(profile.avatarFilename);
-      } else {
+
+      if (!profile.avatarFilename) {
+        setAvatarUrl(null);
+        return;
+      }
+      if (avatarDataUrl !== undefined) {
+        setAvatarUrl(avatarDataUrl);
+        return;
+      }
+      try {
+        setAvatarUrl(await profileStore.readAvatar(profile));
+      } catch (error) {
+        console.warn('头像读取失败，已留空:', error);
         setAvatarUrl(null);
       }
-    } catch (error) {
-      console.error('Failed to save user profile:', error);
-    }
-  };
+    },
+    [],
+  );
 
-  // 压缩图片 - 直接返回 Blob 而不是 File
-  const compressImage = (file: File): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const reader = new FileReader();
-      
-      reader.onload = (e) => {
-        img.src = e.target?.result as string;
-        
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          
-          const MAX_SIZE = 300;
-          let width = img.width;
-          let height = img.height;
-          
-          if (width > height) {
-            if (width > MAX_SIZE) {
-              height *= MAX_SIZE / width;
-              width = MAX_SIZE;
-            }
-          } else {
-            if (height > MAX_SIZE) {
-              width *= MAX_SIZE / height;
-              height = MAX_SIZE;
-            }
-          }
-          
-          canvas.width = width;
-          canvas.height = height;
-          
-          ctx?.drawImage(img, 0, 0, width, height);
-          
-          canvas.toBlob((blob) => {
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error('图片压缩失败'));
-            }
-          }, 'image/jpeg', 0.8);
-        };
-        
-        img.onerror = () => reject(new Error('图片加载失败'));
-      };
-      
-      reader.onerror = () => reject(new Error('文件读取失败'));
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // 将 Blob 转换为 Uint8Array
-  const blobToUint8Array = async (blob: Blob): Promise<Uint8Array> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      
-      reader.onload = () => {
-        if (reader.result instanceof ArrayBuffer) {
-          resolve(new Uint8Array(reader.result));
-        } else {
-          reject(new Error('无法转换 Blob 为 Uint8Array'));
-        }
-      };
-      
-      reader.onerror = () => reject(new Error('Blob 读取失败'));
-      reader.readAsArrayBuffer(blob);
-    });
-  };
-
-  // 更新用户名
-  const updateUserName = async (name: string) => {
-    if (name.trim()) {
-      await saveUserProfile({
-        ...userProfile,
-        name: name.trim()
-      });
-    }
-  };
-
-  // 更新用户头像
-  const updateUserAvatar = async (file: File): Promise<string> => {
-    if (!file.type.startsWith('image/')) {
-      throw new Error('请选择图片文件');
-    }
-    
-    if (file.size > 10 * 1024 * 1024) {
-      throw new Error('图片大小不能超过10MB');
-    }
-    
-    setUploading(true);
-    try {
-      // 压缩图片
-      const compressedBlob = await compressImage(file);
-      
-      // 生成唯一文件名
-      const timestamp = Date.now();
-      const filename = `avatar_${timestamp}.jpg`;
-      
-      // 确保目录存在
-      await initializeAppData();
-      
-      // 将 Blob 转换为 Uint8Array
-      const uint8Array = await blobToUint8Array(compressedBlob);
-      
-      // 使用 writeFile 创建头像文件
-      const avatarPath = `avatars/${filename}`;
-      await writeFile(avatarPath, uint8Array, { baseDir: BaseDirectory.AppData });
-      
-      // 删除旧的头像文件（如果有）
-      if (userProfile.avatarFilename && userProfile.avatarFilename !== filename) {
-        try {
-          const oldAvatarPath = `avatars/${userProfile.avatarFilename}`;
-          // 使用 remove 删除文件
-          await remove(oldAvatarPath, { baseDir: BaseDirectory.AppData });
-        } catch (error) {
-          console.warn('Failed to delete old avatar:', error);
-        }
-      }
-      
-      // 更新用户资料
-      await saveUserProfile({
-        ...userProfile,
-        avatarFilename: filename
-      });
-      
-      console.log(`Avatar saved: ${filename}`);
-      return filename;
-    } catch (error) {
-      console.error('Failed to update avatar:', error);
-      throw error;
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  // 删除头像
-  const removeAvatar = async () => {
-    if (userProfile.avatarFilename) {
-      try {
-        const avatarPath = `avatars/${userProfile.avatarFilename}`;
-        // 使用 remove 删除文件
-        await remove(avatarPath, { baseDir: BaseDirectory.AppData });
-      } catch (error) {
-        console.warn('Failed to delete avatar file:', error);
-      }
-    }
-    
-    // 更新用户资料，移除头像文件名
-    await saveUserProfile({
-      ...userProfile,
-      avatarFilename: null
-    });
-  };
-
-  // 初始加载
+  // 首次加载：没有资料就落一份默认值；读失败也不阻断渲染
   useEffect(() => {
-    loadUserProfile();
-  }, []);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const stored = await profileStore.readProfile();
+        if (cancelled) return;
+        if (stored) {
+          setUserProfile(stored);
+          setAvatarUrl(await profileStore.readAvatar(stored));
+        } else {
+          await saveUserProfile(DEFAULT_USER_PROFILE);
+        }
+      } catch (error) {
+        console.error('加载用户资料失败:', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [saveUserProfile]);
+
+  const updateUserName = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      await saveUserProfile({ ...userProfile, name: trimmed }, avatarUrl);
+    },
+    [userProfile, avatarUrl, saveUserProfile],
+  );
+
+  const updateUserAvatar = useCallback(
+    async (file: File): Promise<string> => {
+      if (!file.type.startsWith('image/')) {
+        throw new Error('请选择图片文件');
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        throw new Error('图片大小不能超过10MB');
+      }
+
+      setUploading(true);
+      try {
+        const dataUrl = await blobToDataUrl(await compressImage(file));
+        const filename = await profileStore.writeAvatar(dataUrl);
+
+        // 换新头像后清理旧文件；清理失败不影响主流程
+        if (userProfile.avatarFilename && userProfile.avatarFilename !== filename) {
+          await profileStore.removeAvatar(userProfile).catch((error) => {
+            console.warn('旧头像清理失败:', error);
+          });
+        }
+
+        await saveUserProfile({ ...userProfile, avatarFilename: filename }, dataUrl);
+        return filename;
+      } finally {
+        setUploading(false);
+      }
+    },
+    [userProfile, saveUserProfile],
+  );
+
+  const removeAvatar = useCallback(async () => {
+    try {
+      await profileStore.removeAvatar(userProfile);
+    } catch (error) {
+      console.warn('删除头像文件失败:', error);
+    }
+    await saveUserProfile({ ...userProfile, avatarFilename: null });
+  }, [userProfile, saveUserProfile]);
 
   return {
-    userProfile: {
-      ...userProfile,
-      avatarUrl
-    },
+    userProfile: { ...userProfile, avatarUrl },
     uploading,
     updateUserName,
     updateUserAvatar,
-    removeAvatar
+    removeAvatar,
   };
 }

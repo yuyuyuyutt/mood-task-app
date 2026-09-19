@@ -1,4 +1,8 @@
-//src/pages/Settings.tsx
+// src/pages/Settings.tsx
+// 设置页。信息架构取舍：
+// - 去掉与页头重复的页面标题与副标题（页头已由 Layout 提供）；
+// - 每个分组用「小图标 + 标题」一行表达，不再用大号图标盒子，降低视觉重量；
+// - 说明性文字下沉为 title 提示或一行短注，界面本身表达结构。
 import React, { useCallback, useState } from 'react';
 import {
   FaBell,
@@ -8,9 +12,15 @@ import {
   FaExclamationCircle,
   FaSpinner,
   FaBorderAll,
+  FaPalette,
+  FaGlobe,
 } from 'react-icons/fa';
 import { usePluginHost } from '../plugins/runtime';
 import { getBuiltinToml } from '../plugins/builtin';
+import { useAppSettings, type BooleanSettingKey } from '../utils/appSettings';
+import { DataBackupCard } from '../features/backup/components/DataBackupCard';
+import { UserTypeCard } from '../features/plan-generator/components/UserTypeCard';
+import { NetworkingSettingsCard } from '../features/plan-generator/components/NetworkingSettingsCard';
 
 /** 受支持的主题类插件（theme 能力）。同一时刻仅一个主题插件生效。 */
 const THEME_PLUGIN_IDS = ['dark-theme', 'wireframe'];
@@ -20,42 +30,53 @@ const THEME_OPTIONS: Array<{
   label: string;
   desc: string;
   icon: React.ReactNode;
-  accent: string;
 }> = [
-  {
-    id: 'default',
-    label: '默认浅色',
-    desc: '不使用主题插件，应用默认外观',
-    icon: <FaSun className="w-6 h-6" />,
-    accent: 'text-gray-700',
-  },
-  {
-    id: 'dark-theme',
-    label: '深色主题',
-    desc: '由 dark-theme 插件提供',
-    icon: <FaMoon className="w-6 h-6" />,
-    accent: 'text-gray-700',
-  },
-  {
-    id: 'wireframe',
-    label: '换色主题1',
-    desc: '由 wireframe 插件提供',
-    icon: <FaBorderAll className="w-6 h-6" />,
-    accent: 'text-gray-700',
-  },
+  { id: 'default', label: '默认浅色', desc: '应用默认外观', icon: <FaSun /> },
+  { id: 'dark-theme', label: '深色主题', desc: 'dark-theme 插件', icon: <FaMoon /> },
+  { id: 'wireframe', label: '黑白线框', desc: 'wireframe 插件', icon: <FaBorderAll /> },
 ];
 
+/** 分组标题：一行一个，弱化重量 */
+const SectionHeader: React.FC<{ icon: React.ReactNode; title: string; hint?: React.ReactNode }> = ({
+  icon,
+  title,
+  hint,
+}) => (
+  <div className="mb-4 flex items-center gap-2">
+    <span className="text-[13px] text-ink-3">{icon}</span>
+    <h2 className="text-sm font-semibold text-ink">{title}</h2>
+    {hint && <span className="ml-auto text-[11px] text-ink-3">{hint}</span>}
+  </div>
+);
+
+/** 开关：命中区 44×24，避免精确点击的小目标 */
+const Switch: React.FC<{ on: boolean; onToggle: () => void; label: string }> = ({
+  on,
+  onToggle,
+  label,
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={on}
+    aria-label={label}
+    onClick={onToggle}
+    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ease-snap ${
+      on ? 'bg-brand' : 'bg-surface-3'
+    }`}
+  >
+    <span
+      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-snap ${
+        on ? 'translate-x-6' : 'translate-x-1'
+      }`}
+    />
+  </button>
+);
+
 export const Settings: React.FC = () => {
-  const {
-    plugins,
-    theme,
-    installFromToml,
-    setEnabled,
-    getPlugin,
-  } = usePluginHost();
+  const { plugins, theme, installFromToml, setEnabled, getPlugin } = usePluginHost();
   const activeThemeId = theme.activePluginId;
 
-  // 已安装的主题类插件（声明式 theme 能力 + 代码 theme 能力都算）
   const installedThemeIds = plugins
     .filter(
       (p) => p.manifest.capabilities?.theme || p.manifest.capabilities?.code?.kind === 'theme',
@@ -65,36 +86,9 @@ export const Settings: React.FC = () => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const [settings, setSettings] = useState({
-    // 通知设置
-    notifications: true,
-    emailNotifications: false,
-    pushNotifications: true,
-    soundNotifications: true,
-    dailyReminder: true,
-    reminderTime: '20:00',
+  const { settings, update } = useAppSettings();
 
-    // 显示设置（主题已由插件宿主接管，这里仅保留语言等）
-    language: 'zh-CN',
-    fontSize: 'medium' as 'small' | 'medium' | 'large',
-    compactMode: false,
-
-    // 隐私设置
-    privacyMode: false,
-    showMoodPublicly: false,
-
-    // 数据管理
-    autoSave: true,
-    backupFrequency: 'weekly' as 'daily' | 'weekly' | 'monthly',
-  });
-
-  const handleChange = (key: keyof typeof settings, value: any) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
-  };
-
-  // 应用某个主题选项：
-  // - 'default'：停用全部主题插件，回到浅色基线；
-  // - 插件 id：未安装则先安装（内置 TOML），再停用其他主题插件并启用目标。
+  // 应用某个主题选项：'default' 停用全部主题插件；插件 id 则先装后启用，并互斥其他主题
   const applyThemeOption = useCallback(
     async (id: string) => {
       setBusyId(id);
@@ -121,7 +115,6 @@ export const Settings: React.FC = () => {
             return;
           }
         }
-        // 停用其他主题插件，保证同一时刻只有一个生效
         for (const pid of THEME_PLUGIN_IDS) {
           if (pid !== id) {
             const other = getPlugin(pid);
@@ -130,7 +123,8 @@ export const Settings: React.FC = () => {
         }
         const target = getPlugin(id);
         if (target && !target.enabled) await setEnabled(id, true);
-        setMessage({ type: 'success', text: `已应用「${id === 'dark-theme' ? '深色主题' : '黑白线框 · 荧光'}」` });
+        const label = THEME_OPTIONS.find((o) => o.id === id)?.label ?? id;
+        setMessage({ type: 'success', text: `已应用「${label}」` });
       } finally {
         setBusyId(null);
       }
@@ -139,167 +133,141 @@ export const Settings: React.FC = () => {
   );
 
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* 头部 */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">设置</h1>
-        <p className="text-gray-600 mt-2">自定义您的任务管理体验</p>
-      </div>
-
-      {/* 消息提示 */}
+    <div className="space-y-5">
       {message && (
-        <div className={`mb-6 p-4 rounded-lg flex items-start ${message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+        <div
+          className={`panel-in flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-sm ${
+            message.type === 'success'
+              ? 'bg-ok-soft text-ok'
+              : 'bg-danger-soft text-danger'
+          }`}
+        >
           {message.type === 'success' ? (
-            <FaCheck className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+            <FaCheck className="mt-0.5 shrink-0 text-[11px]" />
           ) : (
-            <FaExclamationCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+            <FaExclamationCircle className="mt-0.5 shrink-0 text-[11px]" />
           )}
-          <p className="text-sm">{message.text}</p>
+          <p>{message.text}</p>
         </div>
       )}
 
-      <div className="space-y-8">
-        {/* 显示设置 */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <div className="flex items-center mb-6">
-            <div className="p-2 bg-yellow-50 rounded-lg mr-4">
-              <FaSun className="w-5 h-5 text-yellow-600" />
-            </div>
-            <h2 className="text-xl font-semibold text-gray-900">显示设置</h2>
-          </div>
+      {/* 外观 */}
+      <section className="card p-5">
+        <SectionHeader
+          icon={<FaPalette />}
+          title="外观"
+          hint={<span title="主题能力由插件提供，同一时刻仅一个生效">由插件提供</span>}
+        />
 
-          <div className="space-y-6">
-            {/* 主题与外观（由主题类插件提供） */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-gray-700">
-                  主题与外观
-                </label>
-                <span className="text-xs text-gray-400">
-                  主题能力由插件提供 · 同一时刻仅一个生效
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 mb-3">
-                选择「深色主题」或「黑白线框」会自动安装并启用对应内置插件；卸载或停用后回到默认浅色。
-              </p>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+          {THEME_OPTIONS.map((opt) => {
+            const isPlugin = opt.id !== 'default';
+            const installed = !isPlugin || installedThemeIds.includes(opt.id);
+            const active = isPlugin ? activeThemeId === opt.id : !activeThemeId;
+            const busy = busyId === opt.id;
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {THEME_OPTIONS.map((opt) => {
-                  const isPlugin = opt.id !== 'default';
-                  const installed = !isPlugin || installedThemeIds.includes(opt.id);
-                  const active = isPlugin ? activeThemeId === opt.id : !activeThemeId;
-                  const busy = busyId === opt.id;
-                  const iconBoxCls = isPlugin && !installed ? 'opacity-60' : '';
-
-                  return (
-                    <button
-                      key={opt.id}
-                      onClick={() => void applyThemeOption(opt.id)}
-                      disabled={busy}
-                      className={`relative flex flex-col items-start p-4 text-left border transition-colors ${
-                        active
-                          ? 'border-blue-600 bg-blue-50'
-                          : 'border-gray-200 bg-white hover:border-blue-400'
-                      } disabled:opacity-60`}
-                    >
-                      {active && (
-                        <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center">
-                          <FaCheck className="w-3 h-3" />
-                        </span>
-                      )}
-                      <div className={`w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center mb-3 ${iconBoxCls}`}>
-                        {opt.icon}
-                      </div>
-                      <div className="font-medium text-gray-900 flex items-center">
-                        {opt.label}
-                        {isPlugin && installed && (
-                          <span className="ml-2 text-[10px] font-mono px-1.5 py-0.5 bg-gray-100 text-gray-500">
-                            {opt.id}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1 leading-relaxed">
-                        {isPlugin
-                          ? installed
-                            ? opt.desc
-                            : '未安装 · 点击一键安装内置插件'
-                          : opt.desc}
-                      </div>
-                      {busy && (
-                        <span className="absolute bottom-2 right-2">
-                          <FaSpinner className="w-4 h-4 animate-spin text-blue-600" />
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                语言
-              </label>
-              <select
-                value={settings.language}
-                onChange={(e) => handleChange('language', e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => void applyThemeOption(opt.id)}
+                disabled={busy}
+                aria-pressed={active}
+                className={`relative flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-all duration-150 ease-snap active:scale-[0.98] disabled:opacity-50 ${
+                  active
+                    ? 'border-brand bg-brand-soft'
+                    : 'border-line bg-surface hover:border-line-strong hover:bg-surface-2'
+                }`}
               >
-                <option value="zh-CN">简体中文</option>
-                <option value="en-US">English</option>
-                <option value="ja-JP">日本語</option>
-                <option value="ko-KR">한국어</option>
-              </select>
-            </div>
-          </div>
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm ${
+                    active ? 'bg-brand text-white' : 'bg-surface-2 text-ink-2'
+                  } ${isPlugin && !installed ? 'opacity-50' : ''}`}
+                >
+                  {opt.icon}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium text-ink">
+                    {opt.label}
+                  </span>
+                  <span className="block truncate text-[11px] text-ink-3">
+                    {isPlugin && !installed ? '点击安装' : opt.desc}
+                  </span>
+                </span>
+                {busy ? (
+                  <FaSpinner className="shrink-0 animate-spin text-[11px] text-brand" />
+                ) : active ? (
+                  <FaCheck className="shrink-0 text-[11px] text-brand" />
+                ) : null}
+              </button>
+            );
+          })}
         </div>
 
-        {/* 通知设置 */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <div className="flex items-center mb-6">
-            <div className="p-2 bg-green-50 rounded-lg mr-4">
-              <FaBell className="w-5 h-5 text-green-600" />
-            </div>
-            <h2 className="text-xl font-semibold text-gray-900">通知设置</h2>
-          </div>
+        <div className="mt-4 flex items-center gap-3">
+          <label htmlFor="settings-language" className="flex items-center gap-1.5 text-[13px] text-ink-2">
+            <FaGlobe className="text-[11px] text-ink-3" />
+            语言
+          </label>
+          <select
+            id="settings-language"
+            value={settings.language}
+            onChange={(e) => update('language', e.target.value)}
+            className="input w-auto py-1.5 text-[13px]"
+          >
+            <option value="zh-CN">简体中文</option>
+            <option value="en-US">English</option>
+            <option value="ja-JP">日本語</option>
+            <option value="ko-KR">한국어</option>
+          </select>
+        </div>
+      </section>
 
-          <div className="space-y-4">
-            {[
-              { key: 'notifications', label: '启用通知', description: '接收任务提醒和更新' },
-              { key: 'pushNotifications', label: '推送通知', description: '在设备上接收推送通知' },
-              { key: 'soundNotifications', label: '声音提醒', description: '任务提醒时播放声音' },
-              { key: 'dailyReminder', label: '每日提醒', description: '每天提醒待办任务' },
-            ].map((item) => (
-              <div key={item.key} className="flex items-center justify-between py-3">
-                <div>
-                  <div className="font-medium text-gray-900">{item.label}</div>
-                  <div className="text-sm text-gray-500">{item.description}</div>
-                </div>
-                <button
-                  onClick={() => handleChange(item.key as any, !settings[item.key as keyof typeof settings])}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings[item.key as keyof typeof settings] ? 'bg-blue-600' : 'bg-gray-200 hover:bg-gray-300'}`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${settings[item.key as keyof typeof settings] ? 'translate-x-6' : 'translate-x-1'}`}
-                  />
-                </button>
-              </div>
-            ))}
+      {/* 通知 */}
+      <section className="card p-5">
+        <SectionHeader
+          icon={<FaBell />}
+          title="通知"
+          hint={<span title="当前版本只保存偏好，尚未接入系统通知">暂未接入系统通知</span>}
+        />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                每日提醒时间
-              </label>
-              <input
-                type="time"
-                value={settings.reminderTime}
-                onChange={(e) => handleChange('reminderTime', e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
+        <div className="divide-y divide-line">
+          {(
+            [
+              { key: 'notifications', label: '启用通知' },
+              { key: 'pushNotifications', label: '推送通知' },
+              { key: 'soundNotifications', label: '声音提醒' },
+              { key: 'dailyReminder', label: '每日提醒' },
+            ] as Array<{ key: BooleanSettingKey; label: string }>
+          ).map((item) => (
+            <div key={item.key} className="flex items-center justify-between py-2.5">
+              <span className="text-[13px] text-ink">{item.label}</span>
+              <Switch
+                on={settings[item.key]}
+                label={item.label}
+                onToggle={() => update(item.key, !settings[item.key])}
               />
             </div>
-          </div>
+          ))}
         </div>
-      </div>
+
+        <div className="mt-4 flex items-center gap-3">
+          <label htmlFor="settings-reminder" className="text-[13px] text-ink-2">
+            每日提醒时间
+          </label>
+          <input
+            id="settings-reminder"
+            type="time"
+            value={settings.reminderTime}
+            onChange={(e) => update('reminderTime', e.target.value)}
+            className="input w-auto py-1.5 text-[13px]"
+          />
+        </div>
+      </section>
+
+      <UserTypeCard />
+      <NetworkingSettingsCard />
+      <DataBackupCard />
     </div>
   );
 };

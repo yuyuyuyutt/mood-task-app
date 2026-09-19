@@ -21,6 +21,8 @@
     "core:event:allow-listen",
     "core:path:default",
     "core:resources:default",
+    "opener:default",
+    "opener:allow-open-url",
     "fs:default",
     "fs:allow-exists",
     "fs:allow-read-text-file",

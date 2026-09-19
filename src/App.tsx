@@ -1,4 +1,6 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+// 桌面端使用 HashRouter：打包后 WebView 走 Tauri 自定义协议，
+// BrowserRouter 在刷新/深链（如直接进入 /plugins）时会 404，Hash 方式没有这个问题。
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TaskList } from './pages/TaskList';
@@ -7,7 +9,6 @@ import { Statistics } from './pages/Statistics';
 import { Settings } from './pages/Settings';
 import { PluginManager } from './pages/PluginManager';
 import { PluginHostProvider, usePluginRoutes } from './plugins/runtime';
-import './styles.css';
 
 function App() {
   // 主题 / 页面 / 数据等能力统一由插件宿主管理（不再与主应用硬编码绑定）

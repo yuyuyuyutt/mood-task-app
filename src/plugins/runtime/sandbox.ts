@@ -114,12 +114,19 @@ export class SandboxHost {
     const d = e.data as SandboxMessage | undefined;
     if (!d || typeof d !== 'object' || typeof d.__plugin !== 'string') return;
     if (typeof d.type !== 'string') return;
-    this.route(d);
+    this.route(d, e.source as Window | null);
   }
 
-  private route(msg: SandboxMessage): void {
+  private route(msg: SandboxMessage, source?: Window | null): void {
     const rec = this.frames.get(msg.__plugin);
     if (!rec) return;
+    // 来源校验：消息必须来自该插件自己的 iframe。
+    // 不校验来源时，任何能执行 JS 的 iframe 都能伪造 theme:apply。
+    const expected = rec.iframe.contentWindow;
+    if (source && expected && source !== expected) {
+      console.warn(`[sandbox] 插件 "${msg.__plugin}" 消息来源不匹配，已丢弃`);
+      return;
+    }
     // token 校验（仅内联代码插件有 token）
     if (rec.token && msg.__token !== rec.token) {
       console.warn(`[sandbox] 插件 "${msg.__plugin}" 消息 token 不匹配，已丢弃`);

@@ -1,21 +1,62 @@
-//src/pages/Statistics.tsx
+// src/pages/Statistics.tsx
+// 数据统计。视觉层级取舍：
+// - 三个关键指标合成一张卡（分隔线分栏），比三张独立卡片更整体、占位更少；
+// - 时间范围用分段控件，与任务页视图切换保持同一套交互语言；
+// - 删除页面标题/副标题（页头已有）与重复的图例说明，让数字与图表自己说话。
 import React, { useState, useEffect } from 'react';
-import { 
-  FaChartBar, 
-  FaChartLine, 
-  FaChartPie, 
+import {
+  FaChartBar,
+  FaChartLine,
+  FaChartPie,
   FaCalendarAlt,
   FaCheckCircle,
   FaList,
   FaSmile,
   FaFrown,
   FaMeh,
-  FaArrowUp
+  FaArrowUp,
+  FaArrowDown,
 } from 'react-icons/fa';
 import { api } from '../api';
 import { Task, Mood } from '../types';
 import { usePluginHost } from '../plugins/runtime';
 import { recordsToMoods } from '../plugins/pages/moodData';
+
+/** 今天 0 点往前推 days 天的毫秒时间戳（时间范围过滤用） */
+function startOfDaysAgo(days: number): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - days);
+  return d.getTime();
+}
+
+/** 环比徽标：无变化时不显示箭头（避免 "↑ +0pp" 这种伪增长） */
+const TrendBadge: React.FC<{ value: string }> = ({ value }) => {
+  if (/^[+-]?0(%|pp)$/.test(value)) {
+    return (
+      <span className="text-[11px] text-ink-3" title="与上一周期持平">
+        —
+      </span>
+    );
+  }
+  const negative = value.startsWith('-');
+  return (
+    <span
+      className={`tnum inline-flex items-center gap-1 text-[11px] ${
+        negative ? 'text-danger' : 'text-ok'
+      }`}
+    >
+      {negative ? <FaArrowDown className="text-[9px]" /> : <FaArrowUp className="text-[9px]" />}
+      {value}
+    </span>
+  );
+};
+
+const PRIORITY_META: Record<number, { label: string; bar: string; text: string }> = {
+  1: { label: '高', bar: 'bg-danger', text: 'text-danger' },
+  2: { label: '中', bar: 'bg-warn', text: 'text-warn' },
+  3: { label: '低', bar: 'bg-ink-3/50', text: 'text-ink-3' },
+};
 
 export const Statistics: React.FC = () => {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
@@ -24,10 +65,8 @@ export const Statistics: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const { plugins, dataStore } = usePluginHost();
 
-  // 心情数据由「心情日记」插件提供（命名空间 mood）；未启用时优雅降级为空
   const moodPluginEnabled = plugins.some((p) => p.id === 'mood-diary' && p.enabled);
 
-  // 从数据库加载数据
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -53,93 +92,116 @@ export const Statistics: React.FC = () => {
     };
 
     loadData();
-  }, [timeRange, moodPluginEnabled, dataStore]);
+  }, [moodPluginEnabled, dataStore]);
 
-  // 计算统计信息
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter(task => task.status === 'completed').length;
+  // ---- 时间范围过滤 ----
+  const rangeDays = timeRange === 'week' ? 7 : timeRange === 'month' ? 30 : 365;
+  const rangeLabel = timeRange === 'week' ? '上周期' : timeRange === 'month' ? '上期' : '同期';
+  const rangeStart = startOfDaysAgo(rangeDays);
+  const prevRangeStart = startOfDaysAgo(rangeDays * 2);
+
+  const inRange = (
+    value: string | undefined,
+    from: number,
+    to = Number.POSITIVE_INFINITY,
+  ): boolean => {
+    if (!value) return false;
+    const ts = new Date(value).getTime();
+    return Number.isFinite(ts) && ts >= from && ts < to;
+  };
+
+  const tasksInRange = tasks.filter((t) => inRange(t.created_at, rangeStart));
+  const prevTasks = tasks.filter((t) => inRange(t.created_at, prevRangeStart, rangeStart));
+  const moodsInRange = moods.filter((m) => inRange(m.date, rangeStart));
+  const prevMoods = moods.filter((m) => inRange(m.date, prevRangeStart, rangeStart));
+
+  const totalTasks = tasksInRange.length;
+  const completedTasks = tasksInRange.filter((task) => task.status === 'completed').length;
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-  // 根据mood_score转换心情类型
   const getMoodType = (score: number): 'happy' | 'neutral' | 'sad' => {
     if (score >= 4) return 'happy';
     if (score >= 3) return 'neutral';
     return 'sad';
   };
 
-  // 心情分布
-  const moodDistribution = moods.reduce((acc, curr) => {
-    const moodType = getMoodType(curr.mood_score);
-    acc[moodType] = (acc[moodType] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const moodDistribution = moodsInRange.reduce(
+    (acc, curr) => {
+      const moodType = getMoodType(curr.mood_score);
+      acc[moodType] = (acc[moodType] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
 
-  // 优先级分布
-  const priorityDistribution = tasks.reduce((acc, curr) => {
-    acc[curr.priority] = (acc[curr.priority] || 0) + 1;
-    return acc;
-  }, {} as Record<number, number>);
+  const priorityDistribution = tasksInRange.reduce(
+    (acc, curr) => {
+      acc[curr.priority] = (acc[curr.priority] || 0) + 1;
+      return acc;
+    },
+    {} as Record<number, number>,
+  );
 
-  // 任务完成趋势（按日期）
-  const dailyCompletion = tasks.reduce((acc, task) => {
-    // 使用created_at的日期部分
-    const date = task.created_at.split('T')[0];
-    if (!acc[date]) {
-      acc[date] = { total: 0, completed: 0 };
-    }
-    acc[date].total += 1;
-    if (task.status === 'completed') acc[date].completed += 1;
-    return acc;
-  }, {} as Record<string, { total: number; completed: number }>);
+  const dailyCompletion = tasksInRange.reduce(
+    (acc, task) => {
+      const date = task.created_at.split('T')[0];
+      if (!acc[date]) acc[date] = { total: 0, completed: 0 };
+      acc[date].total += 1;
+      if (task.status === 'completed') acc[date].completed += 1;
+      return acc;
+    },
+    {} as Record<string, { total: number; completed: number }>,
+  );
 
-  // 获取心情图标
   const getMoodIcon = (mood: string) => {
     switch (mood) {
-      case 'happy': return <FaSmile className="text-green-500" />;
-      case 'neutral': return <FaMeh className="text-yellow-500" />;
-      case 'sad': return <FaFrown className="text-red-500" />;
-      default: return <FaSmile className="text-gray-500" />;
+      case 'happy':
+        return <FaSmile className="text-ok" />;
+      case 'neutral':
+        return <FaMeh className="text-warn" />;
+      case 'sad':
+        return <FaFrown className="text-danger" />;
+      default:
+        return <FaSmile className="text-ink-3" />;
     }
   };
 
-  // 获取心情标签
   const getMoodLabel = (mood: string) => {
     switch (mood) {
-      case 'happy': return '开心';
-      case 'neutral': return '一般';
-      case 'sad': return '难过';
-      default: return mood;
+      case 'happy':
+        return '开心';
+      case 'neutral':
+        return '一般';
+      case 'sad':
+        return '难过';
+      default:
+        return mood;
     }
   };
 
-  // 获取优先级标签
-  const getPriorityLabel = (priority: number) => {
-    switch (priority) {
-      case 1: return '高';
-      case 2: return '中';
-      case 3: return '低';
-      default: return `优先级 ${priority}`;
-    }
+  // 趋势：与上一个等长周期真实对比
+  const percentChange = (current: number, previous: number): string => {
+    if (previous === 0) return current === 0 ? '0%' : `+${current}`;
+    const delta = Math.round(((current - previous) / previous) * 100);
+    return `${delta >= 0 ? '+' : ''}${delta}%`;
+  };
+  const prevCompletionRate =
+    prevTasks.length > 0
+      ? Math.round(
+          (prevTasks.filter((t) => t.status === 'completed').length / prevTasks.length) * 100,
+        )
+      : 0;
+  const completionDelta = completionRate - prevCompletionRate;
+
+  const trend = {
+    tasksChange: percentChange(tasksInRange.length, prevTasks.length),
+    completionChange: `${completionDelta >= 0 ? '+' : ''}${completionDelta}pp`,
+    moodsChange: percentChange(moodsInRange.length, prevMoods.length),
   };
 
-  // 计算趋势变化
-  const calculateTrend = () => {
-    // 这里可以添加更复杂的趋势计算逻辑
-    // 暂时返回固定值
-    return {
-      tasksChange: '+12%',
-      completionChange: '+8%',
-      moodsChange: '+5%'
-    };
-  };
-
-  const trend = calculateTrend();
-
-  // 找到最高效的一天（完成率最高）
   const getMostEfficientDay = () => {
     let maxCompletion = 0;
     let bestDay = '';
-
     Object.entries(dailyCompletion).forEach(([date, stats]) => {
       const rate = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
       if (rate > maxCompletion) {
@@ -147,330 +209,250 @@ export const Statistics: React.FC = () => {
         bestDay = date;
       }
     });
-
-    return bestDay ? {
-      date: bestDay,
-      completed: dailyCompletion[bestDay]?.completed || 0,
-      rate: Math.round(maxCompletion)
-    } : null;
+    return bestDay
+      ? {
+          date: bestDay,
+          completed: dailyCompletion[bestDay]?.completed || 0,
+          rate: Math.round(maxCompletion),
+        }
+      : null;
   };
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-gray-500">加载统计数据中...</div>
-      </div>
-    );
+    return <div className="flex h-48 items-center justify-center text-sm text-ink-3">载入中…</div>;
   }
 
+  const mostEfficientDay = getMostEfficientDay();
+  const topMood = Object.entries(moodDistribution).sort((a, b) => b[1] - a[1])[0];
+
+  const metrics = [
+    {
+      key: 'tasks',
+      label: '总任务数',
+      value: totalTasks,
+      icon: <FaList />,
+      trend: trend.tasksChange,
+    },
+    {
+      key: 'rate',
+      label: '完成率',
+      value: `${completionRate}%`,
+      icon: <FaCheckCircle />,
+      trend: trend.completionChange,
+    },
+    {
+      key: 'moods',
+      label: '心情记录',
+      value: moodsInRange.length,
+      icon: <FaChartPie />,
+      trend: trend.moodsChange,
+    },
+  ];
+
   return (
-    <div className="max-w-6xl mx-auto">
-      {/* 头部 */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">数据统计</h1>
-          <p className="text-gray-600 mt-2">
-            查看您的任务完成情况和心情趋势
-          </p>
+    <div className="space-y-4">
+      {/* 时间范围 */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="seg" role="tablist" aria-label="时间范围">
+          {(
+            [
+              { id: 'week', label: '本周' },
+              { id: 'month', label: '本月' },
+              { id: 'year', label: '今年' },
+            ] as const
+          ).map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              role="tab"
+              aria-selected={timeRange === r.id}
+              data-active={timeRange === r.id}
+              onClick={() => setTimeRange(r.id)}
+              className="seg-item"
+            >
+              {r.label}
+            </button>
+          ))}
         </div>
-        <div className="flex space-x-2 mt-4 md:mt-0">
-          <button
-            onClick={() => setTimeRange('week')}
-            className={`px-4 py-2 rounded-lg ${timeRange === 'week' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-          >
-            本周
-          </button>
-          <button
-            onClick={() => setTimeRange('month')}
-            className={`px-4 py-2 rounded-lg ${timeRange === 'month' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-          >
-            本月
-          </button>
-          <button
-            onClick={() => setTimeRange('year')}
-            className={`px-4 py-2 rounded-lg ${timeRange === 'year' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-          >
-            今年
-          </button>
-        </div>
+        <span className="text-[11px] text-ink-3">环比{rangeLabel}</span>
       </div>
 
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-600">总任务数</div>
-              <div className="text-3xl font-bold text-gray-900 mt-2">{totalTasks}</div>
+      {/* 关键指标：一张卡分栏，视觉更整体 */}
+      <div className="card grid grid-cols-1 divide-y divide-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        {metrics.map((m) => (
+          <div key={m.key} className="flex flex-col gap-1.5 p-5">
+            <div className="flex items-center gap-1.5 text-ink-3">
+              <span className="text-[11px]">{m.icon}</span>
+              <span className="text-[11px] font-medium tracking-wide">{m.label}</span>
             </div>
-            <div className="p-3 bg-blue-50 rounded-lg">
-              <FaList className="w-6 h-6 text-blue-600" />
-            </div>
-          </div>
-          <div className="mt-4">
-            <div className="flex items-center text-sm">
-              <FaArrowUp className="w-4 h-4 text-green-500 mr-1" />
-              <span className="text-green-500">{trend.tasksChange}</span>
-              <span className="text-gray-500 ml-2">相比上周</span>
+            <div className="flex items-baseline gap-2">
+              <span className="tnum text-2xl leading-none font-semibold text-ink">{m.value}</span>
+              <TrendBadge value={m.trend} />
             </div>
           </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-600">完成率</div>
-              <div className="text-3xl font-bold text-gray-900 mt-2">{completionRate}%</div>
-            </div>
-            <div className="p-3 bg-green-50 rounded-lg">
-              <FaCheckCircle className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-          <div className="mt-4">
-            <div className="flex items-center text-sm">
-              <FaArrowUp className="w-4 h-4 text-green-500 mr-1" />
-              <span className="text-green-500">{trend.completionChange}</span>
-              <span className="text-gray-500 ml-2">相比上周</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-600">心情记录</div>
-              <div className="text-3xl font-bold text-gray-900 mt-2">{moods.length}</div>
-            </div>
-            <div className="p-3 bg-purple-50 rounded-lg">
-              <FaChartPie className="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-          <div className="mt-4">
-            <div className="flex items-center text-sm">
-              <FaArrowUp className="w-4 h-4 text-green-500 mr-1" />
-              <span className="text-green-500">{trend.moodsChange}</span>
-              <span className="text-gray-500 ml-2">相比上周</span>
-            </div>
-          </div>
-          {!moodPluginEnabled && (
-            <p className="mt-3 text-xs text-gray-400">
-              心情数据由「心情日记」插件提供 · 当前未安装
-            </p>
-          )}
-        </div>
+        ))}
       </div>
 
-      {/* 图表和数据 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {!moodPluginEnabled && (
+        <p className="text-[11px] text-ink-3">心情数据由「心情日记」插件提供，当前未启用。</p>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* 心情分布 */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">心情分布</h2>
-            <FaChartPie className="w-5 h-5 text-gray-400" />
+        <section className="card p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ink">心情分布</h2>
+            <FaChartPie className="text-[13px] text-ink-3" />
           </div>
-          
-          <div className="space-y-4">
-            {moods.length === 0 ? (
-              <div className="text-center py-8 text-gray-400 text-sm">
-                暂无心情数据
-                {!moodPluginEnabled && '（未安装「心情日记」插件）'}
-              </div>
-            ) : (
-              Object.entries(moodDistribution).map(([mood, count]) => (
-                <div key={mood} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 flex items-center justify-center bg-white rounded-lg mr-3">
-                      {getMoodIcon(mood)}
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-900">{getMoodLabel(mood)}</div>
-                      <div className="text-sm text-gray-500">{count} 次记录</div>
-                    </div>
-                  </div>
-                  <div className="text-lg font-semibold text-gray-900">
-                    {Math.round((count / moods.length) * 100)}%
-                  </div>
+
+          {moodsInRange.length === 0 ? (
+            <p className="py-8 text-center text-sm text-ink-3">暂无数据</p>
+          ) : (
+            <div className="space-y-2">
+              {Object.entries(moodDistribution).map(([mood, count]) => (
+                <div key={mood} className="flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface text-[13px]">
+                    {getMoodIcon(mood)}
+                  </span>
+                  <span className="flex-1 text-[13px] font-medium text-ink">
+                    {getMoodLabel(mood)}
+                  </span>
+                  <span className="tnum text-[11px] text-ink-3">{count} 次</span>
+                  <span className="tnum w-10 text-right text-[13px] font-semibold text-ink">
+                    {Math.round((count / moodsInRange.length) * 100)}%
+                  </span>
                 </div>
-              ))
-            )}
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <div className="flex items-center text-sm text-gray-500">
-              <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-              <span>开心: {getMoodLabel('happy')}</span>
-              <div className="w-2 h-2 bg-yellow-500 rounded-full mx-4 ml-6"></div>
-              <span>一般: {getMoodLabel('neutral')}</span>
-              <div className="w-2 h-2 bg-red-500 rounded-full mx-4 ml-6"></div>
-              <span>难过: {getMoodLabel('sad')}</span>
+              ))}
             </div>
+          )}
+        </section>
+
+        {/* 优先级分布 */}
+        <section className="card p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ink">优先级分布</h2>
+            <FaChartBar className="text-[13px] text-ink-3" />
           </div>
-        </div>
 
-        {/* 任务优先级分布 */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">任务优先级分布</h2>
-            <FaChartBar className="w-5 h-5 text-gray-400" />
-          </div>
-
-          <div className="space-y-4">
-            {Object.entries(priorityDistribution)
-              .sort(([a], [b]) => Number(a) - Number(b))
-              .map(([priority, count]) => {
-                const priorityNum = Number(priority);
-                let bgColor = 'bg-gray-200';
-                let textColor = 'text-gray-600';
-                
-                if (priorityNum === 1) {
-                  bgColor = 'bg-red-100';
-                  textColor = 'text-red-600';
-                } else if (priorityNum === 2) {
-                  bgColor = 'bg-yellow-100';
-                  textColor = 'text-yellow-600';
-                } else if (priorityNum === 3) {
-                  bgColor = 'bg-green-100';
-                  textColor = 'text-green-600';
-                }
-
-                return (
-                  <div key={priority} className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium text-gray-700">
-                        {getPriorityLabel(priorityNum)}优先级
-                      </span>
-                      <span className="text-gray-900">{count} 个任务</span>
+          {totalTasks === 0 ? (
+            <p className="py-8 text-center text-sm text-ink-3">暂无数据</p>
+          ) : (
+            <div className="space-y-3.5">
+              {Object.entries(priorityDistribution)
+                .sort(([a], [b]) => Number(a) - Number(b))
+                .map(([priority, count]) => {
+                  const p = Number(priority);
+                  const meta = PRIORITY_META[p] ?? { label: '其他', bar: 'bg-ink-3/50', text: 'text-ink-3' };
+                  return (
+                    <div key={priority}>
+                      <div className="mb-1.5 flex items-baseline justify-between text-[13px]">
+                        <span className="text-ink-2">{meta.label}优先级</span>
+                        <span className="tnum text-ink">
+                          {count}
+                          <span className="ml-1 text-[11px] text-ink-3">
+                            {Math.round((count / totalTasks) * 100)}%
+                          </span>
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+                        <div
+                          className={`h-full rounded-full ${meta.bar}`}
+                          style={{ width: `${(count / totalTasks) * 100}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className={`h-2 rounded-full ${bgColor} ${textColor}`}
-                        style={{ width: `${(count / totalTasks) * 100}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-
-          <div className="mt-8 grid grid-cols-3 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-red-600">
-                {priorityDistribution[1] || 0}
-              </div>
-              <div className="text-sm text-gray-500">高优先级</div>
+                  );
+                })}
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-600">
-                {priorityDistribution[2] || 0}
-              </div>
-              <div className="text-sm text-gray-500">中优先级</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">
-                {priorityDistribution[3] || 0}
-              </div>
-              <div className="text-sm text-gray-500">低优先级</div>
-            </div>
-          </div>
-        </div>
+          )}
+        </section>
 
         {/* 每日完成情况 */}
-        <div className="bg-white rounded-xl shadow-sm p-6 lg:col-span-2">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">每日任务完成情况</h2>
-            <FaChartLine className="w-5 h-5 text-gray-400" />
+        <section className="card overflow-hidden lg:col-span-2">
+          <div className="flex items-center justify-between px-5 py-3.5">
+            <h2 className="text-sm font-semibold text-ink">每日完成情况</h2>
+            <FaChartLine className="text-[13px] text-ink-3" />
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-sm text-gray-500 border-b border-gray-200">
-                  <th className="pb-3">日期</th>
-                  <th className="pb-3">总任务</th>
-                  <th className="pb-3">已完成</th>
-                  <th className="pb-3">完成率</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(dailyCompletion)
-                  .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-                  .slice(0, 10) // 只显示最近10天
-                  .map(([date, stats]) => {
-                    return (
-                      <tr key={date} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-4">
-                          <div className="flex items-center">
-                            <FaCalendarAlt className="w-4 h-4 text-gray-400 mr-2" />
-                            <span className="font-medium">{date}</span>
-                          </div>
-                        </td>
-                        <td className="py-4">
-                          <span className="px-3 py-1 bg-gray-100 rounded-full text-sm">
-                            {stats.total}
-                          </span>
-                        </td>
-                        <td className="py-4">
-                          <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                            {stats.completed}
-                          </span>
-                        </td>
-                        <td className="py-4">
-                          <div className="flex items-center">
-                            <div className="w-24 bg-gray-200 rounded-full h-2 mr-3">
-                              <div 
-                                className="h-2 bg-green-500 rounded-full"
-                                style={{ width: `${(stats.completed / stats.total) * 100}%` }}
-                              ></div>
+          {Object.keys(dailyCompletion).length === 0 ? (
+            <p className="px-5 pb-8 text-center text-sm text-ink-3">暂无数据</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="border-y border-line text-left text-[11px] text-ink-3">
+                    <th className="px-5 py-2 font-medium">日期</th>
+                    <th className="px-3 py-2 font-medium">总任务</th>
+                    <th className="px-3 py-2 font-medium">已完成</th>
+                    <th className="px-5 py-2 font-medium">完成率</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(dailyCompletion)
+                    .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+                    .slice(0, 10)
+                    .map(([date, stats]) => {
+                      const rate = Math.round((stats.completed / stats.total) * 100);
+                      return (
+                        <tr
+                          key={date}
+                          className="border-b border-line transition-colors last:border-0 hover:bg-surface-2"
+                        >
+                          <td className="tnum px-5 py-2.5 text-ink-2">{date}</td>
+                          <td className="tnum px-3 py-2.5 text-ink-2">{stats.total}</td>
+                          <td className="tnum px-3 py-2.5 text-ink-2">{stats.completed}</td>
+                          <td className="px-5 py-2.5">
+                            <div className="flex items-center gap-2.5">
+                              <div className="h-1.5 w-20 overflow-hidden rounded-full bg-surface-3">
+                                <div
+                                  className="h-full rounded-full bg-ok"
+                                  style={{ width: `${rate}%` }}
+                                />
+                              </div>
+                              <span className="tnum text-ink">{rate}%</span>
                             </div>
-                            <span className="font-medium">
-                              {Math.round((stats.completed / stats.total) * 100)}%
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
 
-      {/* 总结 */}
-      <div className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-sm p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">📊 月度总结</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <div className="text-sm text-gray-600 mb-1">最高效的一天</div>
-            {getMostEfficientDay() ? (
-              <>
-                <div className="text-lg font-bold text-gray-900">{getMostEfficientDay()?.date}</div>
-                <div className="text-sm text-gray-500">完成了 {getMostEfficientDay()?.completed} 个任务</div>
-              </>
-            ) : (
-              <div className="text-gray-500">暂无数据</div>
-            )}
-          </div>
-          <div>
-            <div className="text-sm text-gray-600 mb-1">最常见的心情</div>
-            <div className="text-lg font-bold text-gray-900">
-              {Object.keys(moodDistribution).length > 0 
-                ? getMoodLabel(Object.entries(moodDistribution).sort((a, b) => b[1] - a[1])[0][0])
-                : '暂无数据'}
-            </div>
-            <div className="text-sm text-gray-500">
-              {Object.keys(moodDistribution).length > 0 
-                ? `记录 ${Object.entries(moodDistribution).sort((a, b) => b[1] - a[1])[0][1]} 次`
-                : ''}
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-gray-600 mb-1">累计完成</div>
-            <div className="text-lg font-bold text-gray-900">{completedTasks} 个任务</div>
-            <div className="text-sm text-gray-500">完成率 {completionRate}%</div>
-          </div>
+      {/* 小结 */}
+      <section className="card grid grid-cols-1 gap-4 p-5 sm:grid-cols-3">
+        <div>
+          <div className="mb-1 text-[11px] text-ink-3">最高效的一天</div>
+          {mostEfficientDay ? (
+            <>
+              <div className="tnum flex items-center gap-2 text-[15px] font-semibold text-ink">
+                <FaCalendarAlt className="text-[11px] text-ink-3" />
+                {mostEfficientDay.date}
+              </div>
+              <div className="tnum text-[11px] text-ink-3">
+                完成 {mostEfficientDay.completed} 项 · {mostEfficientDay.rate}%
+              </div>
+            </>
+          ) : (
+            <div className="text-[13px] text-ink-3">暂无数据</div>
+          )}
         </div>
-      </div>
+        <div>
+          <div className="mb-1 text-[11px] text-ink-3">最常见心情</div>
+          <div className="text-[15px] font-semibold text-ink">
+            {topMood ? getMoodLabel(topMood[0]) : '暂无数据'}
+          </div>
+          {topMood && <div className="tnum text-[11px] text-ink-3">记录 {topMood[1]} 次</div>}
+        </div>
+        <div>
+          <div className="mb-1 text-[11px] text-ink-3">累计完成</div>
+          <div className="tnum text-[15px] font-semibold text-ink">{completedTasks} 项</div>
+          <div className="tnum text-[11px] text-ink-3">完成率 {completionRate}%</div>
+        </div>
+      </section>
     </div>
   );
 };

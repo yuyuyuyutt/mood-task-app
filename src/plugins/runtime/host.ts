@@ -13,6 +13,7 @@ import { ThemeController } from './capabilities';
 import { PluginDataStore } from './dataStore';
 import { PluginRegistry } from './registry';
 import { SandboxHost } from './sandbox';
+import { CORE_VERSION } from './types';
 import type {
   HostMetrics,
   InstalledPlugin,
@@ -21,6 +22,7 @@ import type {
   Tombstone,
 } from './types';
 import type { PluginManifest } from '../parser/types';
+import { compareVersions } from '../../utils/version';
 
 type HostListener = () => void;
 
@@ -28,6 +30,23 @@ type HostListener = () => void;
 export const DEFAULT_RETENTION_DAYS = 3;
 /** 自动清理过期保留数据的周期（毫秒） */
 const PURGE_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 小时
+
+/**
+ * 安装前的核心版本兼容性校验（此前只校验 min/max 自身关系，从不与 CORE_VERSION 比较）。
+ * 返回不兼容原因；兼容时返回 null。
+ */
+function checkCoreCompatibility(manifest: PluginManifest): string | null {
+  const compatibility = manifest.metadata.compatibility;
+  const min = compatibility?.minCoreVersion;
+  if (min && compareVersions(min, CORE_VERSION) > 0) {
+    return `插件 "${manifest.metadata.id}" 要求核心版本 >= ${min}，当前为 ${CORE_VERSION}，已拒绝安装`;
+  }
+  const max = compatibility?.maxCoreVersion;
+  if (max && compareVersions(max, CORE_VERSION) < 0) {
+    return `插件 "${manifest.metadata.id}" 仅支持核心版本 <= ${max}，当前为 ${CORE_VERSION}，已拒绝安装`;
+  }
+  return null;
+}
 
 export class PluginHost {
   private registry: PluginRegistry;
@@ -97,6 +116,10 @@ export class PluginHost {
 
   /** 安装：注册 + 若处于保留期内自动恢复历史数据 */
   async installPlugin(manifest: PluginManifest, source: PluginSource): Promise<InstalledPlugin> {
+    const incompatible = checkCoreCompatibility(manifest);
+    if (incompatible) {
+      throw new Error(incompatible);
+    }
     const id = manifest.metadata.id;
     if (this.dataStore.hasTombstone(id)) {
       this.dataStore.restore(id); // 保留期内重装 -> 数据恢复可见
@@ -182,7 +205,6 @@ export class PluginHost {
     const start = performance.now();
     const plugins = this.registry.snapshot();
     const enabled = new Set(plugins.filter((p) => p.enabled).map((p) => p.id));
-    let activated = 0;
     let failed = 0;
     try {
       // 1) 停用已被卸载 / 被禁用的插件
@@ -197,7 +219,6 @@ export class PluginHost {
       for (const plugin of plugins) {
         if (!plugin.enabled || this.activated.has(plugin.id)) continue;
         if (this.activate(plugin)) {
-          activated++;
           this.activated.add(plugin.id);
         } else {
           failed++;

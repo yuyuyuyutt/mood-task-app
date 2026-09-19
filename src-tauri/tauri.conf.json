@@ -35,8 +35,6 @@
     ]
   },
   "plugins": {
-    "opener": {
-      "active": true
-    }
+    "opener": {}
   }
 }

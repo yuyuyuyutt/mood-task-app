@@ -13,7 +13,6 @@ import {
   FaPlus,
   FaTimes,
   FaCheck,
-  FaRegCalendarAlt,
   FaSpinner,
   FaPencilAlt,
 } from 'react-icons/fa';
@@ -81,7 +80,7 @@ const TimeEditor: React.FC<{
         step={5}
         value={Math.min(1435, draftMin)}
         onChange={(e) => setDraftMin(snapToFiveMinutes(Number(e.target.value)))}
-        className="flex-1 min-w-[120px] accent-gray-900 dark:accent-white"
+        className="flex-1 min-w-[120px] accent-[var(--brand)]"
         aria-label="开始时间（吸附到 0/5 结尾）"
       />
       <span className="text-xs text-gray-500 dark:text-gray-400 w-24 text-right tabular-nums">
@@ -91,7 +90,7 @@ const TimeEditor: React.FC<{
       <div className="flex items-center gap-1">
         <button
           onClick={() => onCommit(draftTime)}
-          className="px-2.5 py-1 text-xs rounded bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-80"
+          className="px-2.5 py-1 text-xs rounded bg-brand text-white hover:opacity-80"
         >
           确定
         </button>
@@ -129,7 +128,7 @@ const ScheduleRow: React.FC<{
           title={done ? '标记为未完成' : '标记为完成'}
           className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
             done
-              ? 'bg-gray-900 dark:bg-white border-gray-900 dark:border-white text-white dark:text-gray-900'
+              ? 'bg-brand border-brand text-white'
               : 'border-gray-300 dark:border-gray-500 text-transparent hover:border-gray-900 dark:hover:border-white'
           }`}
         >
@@ -158,7 +157,7 @@ const ScheduleRow: React.FC<{
               onChange={(e) => setTitleDraft(e.target.value)}
               className="flex-1 min-w-0 px-1.5 py-0.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
             />
-            <button type="submit" className="text-xs px-2 py-1 rounded bg-gray-900 dark:bg-white text-white dark:text-gray-900">
+            <button type="submit" className="text-xs px-2 py-1 rounded bg-brand text-white">
               保存
             </button>
           </form>
@@ -390,28 +389,6 @@ export const SchedulePlanner: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-5">
-      {/* 页头 */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100 flex items-center">
-            <FaRegCalendarAlt className="mr-3 text-primary-500" />
-            时段面板
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">
-            独立于任务列表 · 一周 42 格，点击方块安排 · 时间吸附 0/5 结尾
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <span>
-            本周 <b className="text-gray-900 dark:text-gray-100">{allItems.length}</b> 项
-          </span>
-          <span aria-hidden className="h-3 w-px bg-gray-300 dark:bg-gray-600" />
-          <span>
-            完成 <b className="text-gray-900 dark:text-gray-100">{completedCount}</b>
-          </span>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-5 items-start">
         {/* ============ 左：一周网格 ============ */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 shadow-sm">
@@ -425,12 +402,16 @@ export const SchedulePlanner: React.FC = () => {
               </button>
               <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 ml-1">{monthRange}</span>
             </div>
-            <button
-              onClick={goToday}
-              className="px-3 py-1.5 text-xs rounded-full border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            >
-              回到本周
-            </button>
+            <div className="flex items-center gap-2.5">
+              <span className="tnum hidden items-center gap-1 text-[11px] text-ink-3 sm:flex">
+                本周 {allItems.length} 项
+                <span aria-hidden className="h-3 w-px bg-line" />
+                完成 {completedCount}
+              </span>
+              <button onClick={goToday} className="btn btn-ghost btn-sm rounded-full">
+                回到本周
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto pb-1">
@@ -449,7 +430,7 @@ export const SchedulePlanner: React.FC = () => {
                       <div
                         className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-semibold ${
                           hasSel
-                            ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900'
+                            ? 'bg-brand text-white'
                             : isToday
                               ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
                               : 'text-gray-700 dark:text-gray-300'
@@ -465,7 +446,7 @@ export const SchedulePlanner: React.FC = () => {
               {TIME_BANDS.map((band) => (
                 <div
                   key={band.id}
-                  className="grid border-t border-gray-100 dark:border-gray-700/60"
+                  className="grid border-t border-line"
                   style={{ gridTemplateColumns: '64px repeat(7, minmax(0,1fr))' }}
                 >
                   <div className="flex flex-col items-start justify-center pr-2">
@@ -484,7 +465,7 @@ export const SchedulePlanner: React.FC = () => {
                         className={`group relative min-h-[62px] m-[1px] rounded-xl border transition-all duration-150 flex flex-col items-start justify-center px-2 py-1 text-left ${
                           active
                             ? 'cell-pop border-primary-500 dark:border-primary-400 bg-primary-50/70 dark:bg-blue-900/20 ring-2 ring-primary-500/60 dark:ring-primary-400/50 shadow-sm -translate-y-0.5'
-                            : 'border-gray-100 dark:border-gray-700/60 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/40 hover:-translate-y-0.5'
+                            : 'border-line bg-surface-2/50 hover:border-line-strong hover:bg-surface-2 hover:-translate-y-0.5'
                         } ${count === 0 && !isToday ? 'bg-gray-50/60 dark:bg-gray-800/40' : ''}`}
                         title={`${DAY_LABEL(date)} ${Number(date.slice(8))}日 · ${band.label}（点击安排）`}
                       >
@@ -579,7 +560,7 @@ export const SchedulePlanner: React.FC = () => {
                   <button
                     type="submit"
                     disabled={adding || !quickTitle.trim()}
-                    className="px-3 py-2 text-sm rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-85 disabled:opacity-40 flex items-center"
+                    className="px-3 py-2 text-sm rounded-lg bg-brand text-white hover:opacity-85 disabled:opacity-40 flex items-center"
                   >
                     {adding ? <FaSpinner className="w-3.5 h-3.5 animate-spin" /> : <FaPlus className="w-3.5 h-3.5" />}
                   </button>
@@ -588,14 +569,16 @@ export const SchedulePlanner: React.FC = () => {
             )}
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1.5">说明</h3>
-            <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-1 leading-relaxed">
-              <li>· 本面板的数据与「任务列表」互相独立，互不读写。</li>
-              <li>· 删除、完成、改名都只影响面板自身，不会动任务列表。</li>
-              <li>· 数据双写：桌面端存本地数据库，浏览器开发环境存 localStorage。</li>
+          <details className="rounded-xl border border-line bg-surface-2 px-3.5 py-2.5">
+            <summary className="cursor-pointer list-none text-[11px] font-medium text-ink-3 transition-colors hover:text-ink">
+              数据说明
+            </summary>
+            <ul className="mt-2 space-y-1 text-[11px] leading-relaxed text-ink-3">
+              <li>本面板与「任务列表」互相独立，互不读写。</li>
+              <li>删除、完成、改名只影响面板自身。</li>
+              <li>数据双写：桌面端存本地数据库，浏览器开发环境存 localStorage。</li>
             </ul>
-          </div>
+          </details>
         </div>
       </div>
     </div>

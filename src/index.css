@@ -1,32 +1,512 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* src/index.css
+ * Tailwind v4 入口 + 设计令牌（Design Tokens）。
+ *
+ * 约定：
+ * - 颜色走语义命名（canvas / surface / line / ink），深浅色只改 `:root` 与 `.dark` 的变量值；
+ *   组件里优先用语义色，避免同一处颜色写两遍 `x dark:x`。
+ * - `@theme inline` 让工具类直接输出 `var(--xxx)`，切主题即时生效。
+ * - 深色由插件宿主写在 <html class="dark"> 上（见 plugins/builtin/dark-theme.toml）。
+ */
+@import 'tailwindcss';
 
+/* 深色变体：跟随 <html class="dark">，而非系统偏好 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------
+ * 语义令牌 —— 浅色基线
+ * --------------------------------------------------------------- */
+:root {
+  --canvas: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f7;
+  --surface-3: #e6e9ef;
+  --line: #e4e7ee;
+  --line-strong: #d2d7e2;
+
+  --ink: #0f1423;
+  --ink-2: #5b6479;
+  --ink-3: #8a91a3;
+
+  --brand: #4f46e5;
+  --brand-soft: #eef0ff;
+  --brand-ink: #3730a3;
+
+  --ok: #10b981;
+  --ok-soft: #e7f8f1;
+  --warn: #f59e0b;
+  --warn-soft: #fdf5e6;
+  --danger: #ef4444;
+  --danger-soft: #fdeeee;
+
+  --shadow-1: 0 1px 2px rgba(15, 20, 35, 0.04), 0 1px 3px rgba(15, 20, 35, 0.06);
+  --shadow-2: 0 2px 6px -1px rgba(15, 20, 35, 0.07), 0 4px 14px -4px rgba(15, 20, 35, 0.08);
+  --shadow-3: 0 10px 30px -10px rgba(15, 20, 35, 0.22), 0 2px 8px -3px rgba(15, 20, 35, 0.1);
+}
+
+/* ---------------------------------------------------------------
+ * 语义令牌 —— 深色
+ * --------------------------------------------------------------- */
+.dark {
+  --canvas: #0a0d15;
+  --surface: #12161f;
+  --surface-2: #191e2a;
+  --surface-3: #222836;
+  --line: #242a38;
+  --line-strong: #333a4b;
+
+  --ink: #eef1f7;
+  --ink-2: #9aa3b5;
+  --ink-3: #6d7688;
+
+  --brand: #8b8cf7;
+  --brand-soft: #1c1f36;
+  --brand-ink: #c7c9ff;
+
+  --ok: #34d399;
+  --ok-soft: #10241f;
+  --warn: #fbbf24;
+  --warn-soft: #26200f;
+  --danger: #f87171;
+  --danger-soft: #291519;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-2: 0 4px 14px -4px rgba(0, 0, 0, 0.6);
+  --shadow-3: 0 16px 40px -12px rgba(0, 0, 0, 0.75);
+}
+
+/* ---------------------------------------------------------------
+ * 映射进 Tailwind：生成 bg-surface / text-ink / border-line 等工具类
+ * --------------------------------------------------------------- */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-ink: var(--brand-ink);
+
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --shadow-1: var(--shadow-1);
+  --shadow-2: var(--shadow-2);
+  --shadow-3: var(--shadow-3);
+
+  --font-sans: 'Inter var', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  --ease-snap: cubic-bezier(0.2, 0.9, 0.25, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 品牌色阶：保留 primary-* 命名，历史组件的 bg-primary-500 等继续可用 */
+@theme {
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+}
+
+/* ---------------------------------------------------------------
+ * 兼容层：历史组件用固定调色板类名（bg-white / text-gray-900…）表达"卡片面/正文色"。
+ * 这些类名在深浅两套主题下字面值相同，深色下会失效，所以此处统一映射到语义令牌。
+ *
+ * 关键设计：`:not([class*='dark:…'])` —— 只有当该元素**没有**自己写暗色兜底时才介入。
+ * 这样 `bg-gray-900 dark:bg-white` 这类"反色按钮"不会被误伤。
+ * 新代码请直接用 surface / ink / line 语义类，不要再依赖这一层。
+ * TODO：随组件逐步迁移完成后删除（目前主要用于 SchedulePlanner / TaskForm / 插件相关组件）。
+ *
+ * 注意：这一段**故意不放进 @layer**。CSS 级联中未分层样式优先于任何 @layer，
+ * 否则会输给 Tailwind 的 utilities 层，覆盖不生效。
+ * --------------------------------------------------------------- */
+/* 面 */
+.dark .bg-white:not([class*='dark:bg-']) {
+  background-color: var(--surface);
+}
+.dark .bg-gray-50:not([class*='dark:bg-']) {
+  background-color: var(--surface-2);
+}
+.dark .bg-gray-100:not([class*='dark:bg-']) {
+  background-color: var(--surface-3);
+}
+.dark .bg-gray-800:not([class*='dark:bg-']) {
+  background-color: var(--surface-2);
+}
+.dark .bg-gray-900:not([class*='dark:bg-']) {
+  background-color: var(--canvas);
+}
+
+/* 文字 */
+.dark .text-gray-900:not([class*='dark:text-']),
+.dark .text-gray-800:not([class*='dark:text-']) {
+  color: var(--ink);
+}
+.dark .text-gray-700:not([class*='dark:text-']),
+.dark .text-gray-600:not([class*='dark:text-']) {
+  color: var(--ink-2);
+}
+.dark .text-gray-500:not([class*='dark:text-']),
+.dark .text-gray-400:not([class*='dark:text-']) {
+  color: var(--ink-3);
+}
+
+/* 边框 */
+.dark .border-gray-100:not([class*='dark:border-']),
+.dark .border-gray-200:not([class*='dark:border-']) {
+  border-color: var(--line);
+}
+.dark .border-gray-300:not([class*='dark:border-']),
+.dark .border-gray-700:not([class*='dark:border-']) {
+  border-color: var(--line-strong);
+}
+
+/* 语义彩底：固定色阶在深色下改为低透明度着色，避免大片亮色块 */
+.dark .bg-primary-50:not([class*='dark:bg-']) {
+  background-color: color-mix(in srgb, var(--brand) 14%, transparent);
+}
+.dark .bg-primary-100:not([class*='dark:bg-']) {
+  background-color: color-mix(in srgb, var(--brand) 20%, transparent);
+}
+.dark .bg-red-100:not([class*='dark:bg-']) {
+  background-color: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+.dark .bg-yellow-100:not([class*='dark:bg-']) {
+  background-color: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+.dark .bg-green-100:not([class*='dark:bg-']) {
+  background-color: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+.dark .bg-blue-100:not([class*='dark:bg-']),
+.dark .bg-purple-100:not([class*='dark:bg-']) {
+  background-color: color-mix(in srgb, var(--brand) 16%, transparent);
+}
+.dark .text-primary-600:not([class*='dark:text-']),
+.dark .text-primary-700:not([class*='dark:text-']) {
+  color: var(--brand);
+}
+.dark .text-red-800:not([class*='dark:text-']) {
+  color: var(--danger);
+}
+.dark .text-yellow-800:not([class*='dark:text-']) {
+  color: var(--warn);
+}
+.dark .text-green-800:not([class*='dark:text-']) {
+  color: var(--ok);
+}
+
+/* hover 态 */
+.dark .hover\:bg-gray-50:hover:not([class*='dark:hover:bg-']) {
+  background-color: var(--surface-2);
+}
+.dark .hover\:bg-gray-100:hover:not([class*='dark:hover:bg-']),
+.dark .hover\:bg-gray-200:hover:not([class*='dark:hover:bg-']) {
+  background-color: var(--surface-3);
+}
+
+/* ---------------------------------------------------------------
+ * 基础层
+ * --------------------------------------------------------------- */
 @layer base {
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   body {
-    @apply bg-gray-50 text-gray-900;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    transition: background-color 0.2s ease;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--brand);
+    color: #fff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--ink-3);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
 }
 
+/* ---------------------------------------------------------------
+ * 组件层：可复用的原子组合（其余样式一律用工具类写在组件里）
+ * --------------------------------------------------------------- */
 @layer components {
-  .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-colors;
-  }
-  
-  .btn-primary {
-    @apply bg-primary-500 text-white hover:bg-primary-600;
-  }
-  
-  .btn-secondary {
-    @apply bg-gray-200 text-gray-800 hover:bg-gray-300;
-  }
-  
-  .input {
-    @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none;
-  }
-  
   .card {
-    @apply bg-white rounded-xl shadow-sm p-6;
+    @apply rounded-2xl border border-line bg-surface shadow-1;
+  }
+
+  /* 按钮默认无底色：现代"扁平 + 需要时才浮现"的观感，也避免全局灰色按钮 */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm
+      font-medium text-ink-2 transition-all duration-150 ease-snap
+      hover:bg-surface-2 hover:text-ink active:scale-[0.97]
+      disabled:pointer-events-none disabled:opacity-40;
+  }
+
+  .btn-primary {
+    @apply bg-brand text-white shadow-1 hover:bg-primary-600 hover:text-white active:bg-primary-700;
+  }
+
+  .btn-ghost {
+    @apply border border-line bg-surface text-ink hover:bg-surface-2;
+  }
+
+  /* 兼容别名：历史组件写的是 btn-secondary，语义等同 btn-ghost */
+  .btn-secondary {
+    @apply border border-line bg-surface text-ink hover:bg-surface-2;
+  }
+
+  .btn-sm {
+    @apply gap-1.5 rounded-lg px-2.5 py-1.5 text-xs;
+  }
+
+  /* 图标按钮：hover 才显形，降低常驻视觉噪音 */
+  .icon-btn {
+    @apply inline-flex h-7 w-7 items-center justify-center rounded-lg text-ink-3
+      transition-all duration-150 ease-snap hover:bg-surface-3 hover:text-ink active:scale-90;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink
+      transition-all duration-150 placeholder:text-ink-3
+      focus:border-brand focus:ring-[3px] focus:ring-brand/15 focus:outline-none;
+  }
+
+  /* 分段控件：视图/范围切换统一用它 */
+  .seg {
+    @apply inline-flex items-center gap-0.5 rounded-full bg-surface-2 p-0.5;
+  }
+
+  .seg-item {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium
+      text-ink-2 transition-all duration-150 ease-snap hover:text-ink active:scale-[0.97];
+  }
+
+  .seg-item[data-active='true'] {
+    @apply bg-surface text-ink shadow-1;
+  }
+
+  /* 筛选胶囊 */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-transparent px-2.5 py-1
+      text-xs font-medium text-ink-2 transition-all duration-150 ease-snap
+      hover:bg-surface-2 hover:text-ink active:scale-95;
+  }
+
+  .chip[data-active='true'] {
+    @apply border-brand/25 bg-brand-soft text-brand-ink;
+  }
+
+  .label {
+    @apply text-[11px] font-medium tracking-wide text-ink-3 uppercase;
+  }
+
+  /* 数字等宽：统计数字更新时不左右跳动 */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+}
+
+/* ---------------------------------------------------------------
+ * 动效：统一在此定义，组件只挂类名
+ * 原则：只动位移/缩放/透明度（GPU 友好），时长 ≤ 320ms，干脆不拖沓
+ * --------------------------------------------------------------- */
+@layer utilities {
+  .task-enter {
+    animation: taskEnter 0.26s var(--ease-out-expo) both;
+  }
+
+  .task-leave {
+    animation: taskLeave 0.18s var(--ease-snap) forwards;
+    pointer-events: none;
+  }
+
+  /* 完成任务：一次"打勾 → 上移淡出"，260ms 内结束，追求干脆的完成感 */
+  .task-done {
+    animation: taskDone 0.26s var(--ease-out-expo) forwards;
+    pointer-events: none;
+  }
+
+  /* 勾选按钮完成瞬间的回弹 */
+  .check-pop {
+    animation: checkPop 0.3s var(--ease-spring);
+  }
+
+  .panel-in {
+    animation: panelIn 0.22s var(--ease-out-expo) both;
+  }
+
+  .cell-pop {
+    animation: cellPop 0.24s var(--ease-spring) both;
+  }
+
+  .modal-enter {
+    animation: modalEnter 0.2s var(--ease-out-expo);
+  }
+
+  .tab-enter {
+    animation: tabEnter 0.2s var(--ease-out-expo) both;
+  }
+
+  .stat-flash {
+    animation: statFlash 0.5s var(--ease-snap);
+  }
+}
+
+@keyframes taskEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes taskLeave {
+  to {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
+@keyframes taskDone {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(2px) scale(0.995);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+}
+
+@keyframes checkPop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.22);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cellPop {
+  from {
+    transform: scale(0.94);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes tabEnter {
+  from {
+    opacity: 0.4;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes statFlash {
+  0% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-2px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+/* 尊重系统"减少动态效果" */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

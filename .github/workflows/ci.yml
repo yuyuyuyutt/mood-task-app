@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  web:
+    name: 前端校验（类型 / 版本号 / 单测）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 版本号真源是 src-tauri/tauri.conf.json；不一致直接失败，避免打包出对不上的版本
+      - name: 校验版本号一致性
+        run: npm run version:check
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 构建产物
+        run: npm run build
+
+# 说明：Rust 侧的 `cargo check` 没有放进 CI。
+# 它需要 runner 预装 WebKitGTK 等系统级依赖，首次编译也偏慢，
+# 与本仓库"快速、稳定"的 CI 定位冲突。请在本机（已具备工具链的环境）执行：
+#   cd src-tauri && cargo check --message-format=short

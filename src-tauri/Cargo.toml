@@ -1,22 +1,29 @@
 [package]
 name = "mood-task-app"
-version = "0.1.0"
+version = "0.1.3"
 description = "A desktop app for task and mood tracking"
 authors = ["Your Name"]
 license = "MIT"
 edition = "2021"
 
+[lib]
+name = "mood_task_app"
+path = "src/lib.rs"
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rusqlite = { version = "0.31", features = ["bundled"] }
-chrono = { version = "0.4", features = ["serde"] }
 tauri = { version = "2.0", features = [] }
-tauri-plugin-opener = "2.0"  # 添加 opener 插件
+tauri-plugin-opener = "2.0"
 r2d2 = "0.8" # 连接池
 r2d2_sqlite = "0.24"
-anyhow = "1" # 简化错误处理
 tauri-plugin-fs = "2"
+# 出站 HTTP（计划生成器的资源采集：B 站搜索 / SearXNG）。
+# 必须显式开启 TLS：reqwest 虽由 tauri 传递引入，但默认未启用任何 TLS feature，
+# 关闭 TLS 时无法发起 https:// 请求。Windows 上选用 native-tls（SChannel，系统原生）。
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+urlencoding = "2.1"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }

@@ -1,5 +1,6 @@
 // src/plugins/parser/validator.ts
 import { z, ZodError } from 'zod';
+import { compareVersions } from '../../utils/version';
 import { PluginManifest, PluginError } from './types';
 
 // ============ 基础验证模式 ============
@@ -486,28 +487,6 @@ function performExtraValidations(manifest: PluginManifest): {
   }
 
   return { errors, warnings };
-}
-
-// ============ 版本比较函数 ============
-function compareVersions(v1: string, v2: string): number {
-  const parseVersion = (version: string): number[] => {
-    // 移除预发布版本和构建元数据
-    const cleanVersion = version.split('-')[0].split('+')[0];
-    return cleanVersion.split('.').map(Number);
-  };
-
-  const v1Parts = parseVersion(v1);
-  const v2Parts = parseVersion(v2);
-
-  for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
-    const part1 = v1Parts[i] || 0;
-    const part2 = v2Parts[i] || 0;
-    
-    if (part1 > part2) return 1;
-    if (part1 < part2) return -1;
-  }
-  
-  return 0;
 }
 
 // ============ 导出类型和函数 ============

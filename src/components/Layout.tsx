@@ -1,4 +1,8 @@
 // src/components/Layout.tsx
+// 应用外壳。视觉层级原则：
+// - 导航按"功能重要性"分层：核心工作流（任务/时段/统计）在上，配置类（插件/设置）在下并用分隔线隔开；
+// - 页头只保留当前页面标题与日期，不放任何解释性副标题（让组件自己说话）；
+// - 全部颜色走语义令牌（canvas/surface/line/ink），深浅色无需分别写两套类名。
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
@@ -8,10 +12,9 @@ import {
   FaCog,
   FaBars,
   FaTimes,
-  FaHome,
   FaCalendarAlt,
   FaUser,
-  FaArrowRight,
+  FaChevronRight,
   FaPlug,
   FaSpinner,
   FaMoon,
@@ -20,6 +23,7 @@ import {
 import { UserProfileModalTauri } from './UserProfileModalTauri';
 import { useUserProfileTauri } from '../hooks/useUserProfileTauri';
 import { usePluginHost } from '../plugins/runtime';
+import { Logo } from './Logo';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -33,9 +37,16 @@ const PAGE_ICON_MAP: Record<string, React.ReactNode> = {
   chart: <FaChartBar />,
   plug: <FaPlug />,
   settings: <FaCog />,
-  home: <FaHome />,
+  home: <FaTasks />,
   moon: <FaMoon />,
 };
+
+interface NavItem {
+  path: string;
+  label: string;
+  icon: React.ReactNode;
+  exact?: boolean;
+}
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -43,19 +54,16 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const { pages } = usePluginHost();
 
-  const {
-    userProfile,
-    uploading,
-    updateUserName,
-    updateUserAvatar,
-    removeAvatar
-  } = useUserProfileTauri();
+  const { userProfile, uploading, updateUserName, updateUserAvatar, removeAvatar } =
+    useUserProfileTauri();
 
-  // 核心导航（"心情日记"已解耦为插件，由下方 pluginPages 动态注入）
-  const navigationItems = [
-    { path: '/', label: '任务列表', icon: <FaTasks />, exact: true },
+  // 核心导航：primary = 高频主功能，secondary = 配置类
+  const primaryNav: NavItem[] = [
+    { path: '/tasks', label: '任务列表', icon: <FaTasks />, exact: true },
     { path: '/schedule', label: '时段面板', icon: <FaClock />, exact: true },
     { path: '/stats', label: '数据统计', icon: <FaChartBar /> },
+  ];
+  const secondaryNav: NavItem[] = [
     { path: '/plugins', label: '插件管理', icon: <FaPlug /> },
     { path: '/settings', label: '系统设置', icon: <FaCog /> },
   ];
@@ -63,7 +71,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   // 插件贡献的页面（仅显示 showInNav 的；pageId 冲突时先启用者生效）
   const pluginPages = React.useMemo(() => {
     const seen = new Set<string>();
-    const out: { path: string; label: string; icon: React.ReactNode }[] = [];
+    const out: NavItem[] = [];
     for (const page of pages) {
       if (!page.showInNav || seen.has(page.pageId)) continue;
       seen.add(page.pageId);
@@ -76,230 +84,172 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     return out;
   }, [pages]);
 
-  const allNavItems: { path: string; label: string; icon: React.ReactNode; exact?: boolean }[] = [
-    ...navigationItems,
-  ];
-  {
-    // 插件页面：路径与核心导航冲突时跳过（核心优先），其余追加
-    const corePaths = new Set(allNavItems.map((i) => i.path));
+  // 插件页面并入主功能区；路径与核心导航冲突时跳过（核心优先）
+  const navSections = React.useMemo(() => {
+    const corePaths = new Set([...primaryNav, ...secondaryNav].map((i) => i.path));
     const seen = new Set<string>();
+    const extra: NavItem[] = [];
     for (const page of pluginPages) {
       if (corePaths.has(page.path) || seen.has(page.path)) continue;
       seen.add(page.path);
-      allNavItems.push(page);
+      extra.push(page);
     }
-  }
-  const pluginPagePaths = new Set(pluginPages.map((p) => p.path));
+    return { primary: [...primaryNav, ...extra], secondary: secondaryNav };
+  }, [pluginPages]);
 
-  // 检查是否是当前路径
-  const isActive = (path: string, exact: boolean = false) => {
-    if (exact) {
-      return location.pathname === path;
-    }
-    return location.pathname.startsWith(path);
-  };
+  const allNavItems: NavItem[] = [...navSections.primary, ...navSections.secondary];
+
+  const isActive = (path: string, exact: boolean = false) =>
+    exact ? location.pathname === path : location.pathname.startsWith(path);
+
+  const currentItem = allNavItems.find((item) => isActive(item.path, item.exact));
 
   const handleAvatarClick = () => {
     setProfileModalOpen(true);
     setSidebarOpen(false);
   };
 
-  // 监听键盘事件关闭侧边栏
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && sidebarOpen) {
-        setSidebarOpen(false);
-      }
+      if (e.key === 'Escape' && sidebarOpen) setSidebarOpen(false);
     };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [sidebarOpen]);
 
+  const renderNavItem = (item: NavItem) => {
+    const active = isActive(item.path, item.exact);
+    return (
+      <Link
+        key={item.path}
+        to={item.path}
+        onClick={() => setSidebarOpen(false)}
+        aria-current={active ? 'page' : undefined}
+        className={`group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all duration-150 ease-snap ${
+          active
+            ? 'bg-brand-soft font-semibold text-brand-ink'
+            : 'font-medium text-ink-2 hover:bg-surface-2 hover:text-ink'
+        }`}
+      >
+        {/* 激活指示条：位置固定，不挤压文字 */}
+        <span
+          aria-hidden
+          className={`absolute top-1/2 -left-2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-brand transition-opacity duration-150 ${
+            active ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
+        <span
+          className={`flex h-4 w-4 items-center justify-center text-[13px] transition-colors ${
+            active ? 'text-brand' : 'text-ink-3 group-hover:text-ink-2'
+          }`}
+        >
+          {item.icon}
+        </span>
+        <span className="truncate">{item.label}</span>
+      </Link>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
+    <div className="flex min-h-screen bg-canvas">
       {/* 移动端菜单按钮 */}
-      <div className="lg:hidden fixed top-4 left-4 z-50">
+      <div className="fixed top-3 left-3 z-50 lg:hidden">
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-3 rounded-lg bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-shadow"
+          className="icon-btn h-9 w-9 border border-line bg-surface shadow-2"
           aria-label="切换菜单"
         >
-          {sidebarOpen ? (
-            <FaTimes className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-          ) : (
-            <FaBars className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-          )}
+          {sidebarOpen ? <FaTimes /> : <FaBars />}
         </button>
       </div>
 
-      {/* 遮罩层（移动端） */}
+      {/* 移动端遮罩 */}
       {sidebarOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30 transition-opacity"
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-[2px] transition-opacity lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* 侧边栏 */}
       <aside
-        className={`
-          fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-gray-900 shadow-xl 
-          transform transition-transform duration-300 ease-in-out
+        className={`fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-line bg-surface
+          transition-transform duration-250 ease-out-expo
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          lg:translate-x-0 lg:static lg:w-64
-        `}
+          lg:static lg:translate-x-0`}
       >
-        <div className="h-full flex flex-col">
-          {/* Logo 区域 */}
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center">
-                <FaHome className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">高山仰止</h1>
-              </div>
-            </div>
+        {/* 品牌 */}
+        <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
+          <Logo size={30} className="shrink-0 drop-shadow-sm" />
+          <span className="truncate text-[15px] font-semibold tracking-tight text-ink">
+            高山仰止
+          </span>
+        </div>
+
+        {/* 导航：主功能 / 配置 两段 */}
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-4 pb-2">
+          {navSections.primary.map(renderNavItem)}
+
+          <div className="px-2.5 pt-3 pb-1.5">
+            <div className="h-px bg-line" />
           </div>
 
-          {/* 导航菜单 */}
-          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {allNavItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setSidebarOpen(false)}
-                className={`
-                  flex items-center px-4 py-3 rounded-lg transition-all duration-200
-                  ${isActive(item.path, item.exact)
-                    ? 'bg-primary-50 dark:bg-blue-900/30 text-primary-600 dark:text-blue-400 shadow-sm'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                  }
-                `}
-              >
-                <span className={`
-                  mr-3 ${isActive(item.path, item.exact) ? 'text-primary-500 dark:text-blue-400' : 'text-gray-400'}
-                `}>
-                  {item.icon}
-                </span>
-                <span className="font-medium">{item.label}</span>
-              </Link>
-            ))}
-          </nav>
+          {navSections.secondary.map(renderNavItem)}
+        </nav>
 
-          {/* 用户信息 */}
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            <div 
-              className="group cursor-pointer p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors active:scale-95"
-              onClick={handleAvatarClick}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  handleAvatarClick();
-                }
-              }}
-            >
-              <div className="flex items-center">
-                <div className="relative">
-                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-gray-300 dark:border-gray-600 group-hover:border-primary-500 transition-colors shadow-md">
-                    {userProfile.avatarUrl ? (
-                      <img
-                        src={userProfile.avatarUrl}
-                        alt={userProfile.name}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                        {uploading ? (
-                          <FaSpinner className="w-6 h-6 text-white animate-spin" />
-                        ) : (
-                          <FaUser className="w-6 h-6 text-white" />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="ml-3 flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                      {userProfile.name}
-                    </p>
-                    <FaArrowRight className="w-3 h-3 text-gray-400 group-hover:text-primary-500 transition-colors flex-shrink-0" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* 用户 */}
+        <div className="border-t border-line p-3">
+          <button
+            onClick={handleAvatarClick}
+            className="group flex w-full items-center gap-2.5 rounded-lg p-2 text-left transition-colors duration-150 hover:bg-surface-2"
+          >
+            <span className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-surface-2">
+              {userProfile.avatarUrl ? (
+                <img
+                  src={userProfile.avatarUrl}
+                  alt={userProfile.name}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+              ) : uploading ? (
+                <FaSpinner className="animate-spin text-ink-3" />
+              ) : (
+                <FaUser className="text-[13px] text-ink-3" />
+              )}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+              {userProfile.name}
+            </span>
+            <FaChevronRight className="shrink-0 text-[10px] text-ink-3 transition-transform duration-150 group-hover:translate-x-0.5" />
+          </button>
         </div>
       </aside>
 
       {/* 主内容区 */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* 顶部导航栏 */}
-        <header className="sticky top-0 z-20 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
-          <div className="px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex-1 min-w-0">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 truncate">
-                  {allNavItems.find(item => 
-                    isActive(item.path, item.exact)
-                  )?.label || '每日任务'}
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 truncate">
-                  {(() => {
-                    const item = allNavItems.find(item => 
-                      isActive(item.path, item.exact)
-                    );
-                    if (item?.label === '任务列表') return '高效管理您的日常任务';
-                    if (item?.label === '时段面板') return '按一天中的时间段安排任务';
-                    if (item?.label === '数据统计') return '查看您的生产力分析';
-                    if (item?.label === '插件管理') return '扩展应用功能，安装和管理插件'; 
-                    if (item?.label === '系统设置') return '个性化您的应用体验';
-                    if (item && pluginPagePaths.has(item.path)) return '由插件提供的功能页面';
-                    return '';
-                  })()}
-                </p>
-              </div>
-              
-              {/* 日期显示 */}
-              <div className="hidden md:flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400 ml-4">
-                <FaCalendarAlt className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate max-w-xs">
-                  {new Date().toLocaleDateString('zh-CN', { 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric',
-                    weekday: 'long'
-                  })}
-                </span>
-              </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur-md">
+          <div className="flex items-center justify-between gap-4 px-4 py-3 pl-14 sm:px-6 lg:pl-8">
+            <h1 className="truncate text-[15px] font-semibold text-ink">
+              {currentItem?.label ?? '每日任务'}
+            </h1>
+            <div className="flex shrink-0 items-center gap-1.5 text-xs text-ink-3">
+              <FaCalendarAlt className="text-[11px]" />
+              <span className="tnum">
+                {new Date().toLocaleDateString('zh-CN', {
+                  month: 'long',
+                  day: 'numeric',
+                  weekday: 'long',
+                })}
+              </span>
             </div>
           </div>
         </header>
 
-        {/* 页面内容 */}
-        <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
-          <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-            {children}
-          </div>
+        <main className="flex-1 overflow-auto">
+          <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">{children}</div>
         </main>
-
-        {/* 页脚 */}
-        <footer className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 py-4">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col md:flex-row justify-between items-center text-sm text-gray-500 dark:text-gray-400 space-y-2 md:space-y-0">
-              <div>
-                © {new Date().getFullYear()} 高山仰止. 保留所有权利.
-              </div>
-            </div>
-          </div>
-        </footer>
       </div>
 
-      {/* 用户资料编辑模态框 */}
       <UserProfileModalTauri
         isOpen={profileModalOpen}
         onClose={() => setProfileModalOpen(false)}

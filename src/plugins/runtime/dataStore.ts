@@ -8,6 +8,7 @@
 // 保留期：卸载 -> tombstone（数据不动）；保留期内重装 -> 自动恢复；到期 -> 清除。
 // 存储后端：Tauri 下走 SQLite（plugin_data 表）；浏览器开发走 localStorage。
 import type { DataCapability, PluginManifest } from '../parser/types';
+import { isTauriRuntime } from '../../utils/runtime';
 import type { DataOp, DataRecord, Tombstone } from './types';
 
 /** localStorage 数据键前缀 */
@@ -17,16 +18,20 @@ const TOMBSTONE_KEY = 'mood-task:plugin-tombstones:v1';
 
 export type DataIdentity = string;
 
+/** 备份/恢复用的扁平行 */
+export interface PluginDataDumpRow {
+  namespace: string;
+  collection: string;
+  key: string;
+  value: unknown;
+}
+
 /** 宿主给页面/核心提供的绑定式数据访问（页面用 usePluginData 获取） */
 export interface PluginDataAccess {
   list: (collection: string) => Promise<DataRecord[]>;
   get: (collection: string, key: string) => Promise<unknown>;
   put: (collection: string, key: string, value: unknown) => Promise<void>;
   remove: (collection: string, key: string) => Promise<void>;
-}
-
-function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
 function dataKey(namespace: string, collection: string, key: string): string {
@@ -78,7 +83,7 @@ export class PluginDataStore {
 
   async list(identity: DataIdentity, namespace: string, collection: string): Promise<DataRecord[]> {
     this.authorize(identity, namespace, collection, 'read');
-    if (isTauri()) {
+    if (isTauriRuntime()) {
       const { invoke } = await import('@tauri-apps/api/core');
       const rows = (await invoke('plugin_data_list', { namespace, collection })) as Array<{
         key: string;
@@ -92,7 +97,7 @@ export class PluginDataStore {
 
   async get(identity: DataIdentity, namespace: string, collection: string, key: string): Promise<unknown> {
     this.authorize(identity, namespace, collection, 'read');
-    if (isTauri()) {
+    if (isTauriRuntime()) {
       const { invoke } = await import('@tauri-apps/api/core');
       const row = (await invoke('plugin_data_get', { namespace, collection, key })) as
         | { value: string; updated_at: string }
@@ -106,7 +111,7 @@ export class PluginDataStore {
   async put(identity: DataIdentity, namespace: string, collection: string, key: string, value: unknown): Promise<void> {
     this.authorize(identity, namespace, collection, 'write');
     const json = JSON.stringify(value);
-    if (isTauri()) {
+    if (isTauriRuntime()) {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('plugin_data_put', { namespace, collection, key, value: json });
       return;
@@ -116,7 +121,7 @@ export class PluginDataStore {
 
   async remove(identity: DataIdentity, namespace: string, collection: string, key: string): Promise<void> {
     this.authorize(identity, namespace, collection, 'delete');
-    if (isTauri()) {
+    if (isTauriRuntime()) {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('plugin_data_delete', { namespace, collection, key });
       return;
@@ -126,7 +131,7 @@ export class PluginDataStore {
 
   async clear(identity: DataIdentity, namespace: string, collection: string): Promise<void> {
     this.authorize(identity, namespace, collection, 'delete');
-    if (isTauri()) {
+    if (isTauriRuntime()) {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('plugin_data_clear', { namespace, collection });
       return;
@@ -142,7 +147,7 @@ export class PluginDataStore {
 
   /** 清除整个命名空间的数据（仅供保留期到期/回收站清除使用；core 身份） */
   async clearNamespace(namespace: string): Promise<void> {
-    if (isTauri()) {
+    if (isTauriRuntime()) {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('plugin_data_clear_namespace', { namespace });
       return;
@@ -166,10 +171,12 @@ export class PluginDataStore {
       return cap;
     };
     return {
-      list: (c) => this.list(pluginId, resolve().namespace, c),
-      get: (c, k) => this.get(pluginId, resolve().namespace, c, k),
-      put: (c, k, v) => this.put(pluginId, resolve().namespace, c, k, v),
-      remove: (c, k) => this.remove(pluginId, resolve().namespace, c, k),
+      // 统一声明为 async：插件被卸载后 resolve() 会抛错，async 保证它变成
+      // rejected promise 而不是同步抛出，调用方 await/.catch 行为一致。
+      list: async (c) => this.list(pluginId, resolve().namespace, c),
+      get: async (c, k) => this.get(pluginId, resolve().namespace, c, k),
+      put: async (c, k, v) => this.put(pluginId, resolve().namespace, c, k, v),
+      remove: async (c, k) => this.remove(pluginId, resolve().namespace, c, k),
     };
   }
 
@@ -186,6 +193,61 @@ export class PluginDataStore {
       }
     }
     return out;
+  }
+
+  // ---------------- 备份 / 恢复（core 身份） ----------------
+
+  /**
+   * 全量导出所有命名空间的数据（供应用的"导出备份"使用）。
+   * 之所以需要全量：`list()` 必须显式给出 namespace+collection，
+   * 而调度面板等宿主命名空间是按日期分 collection 的，无法预先枚举。
+   */
+  async dumpAll(): Promise<PluginDataDumpRow[]> {
+    if (isTauriRuntime()) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const rows = (await invoke('plugin_data_dump')) as Array<{
+        namespace: string;
+        collection: string;
+        key: string;
+        value: string;
+      }>;
+      return rows.map((r) => ({
+        namespace: r.namespace,
+        collection: r.collection,
+        key: r.key,
+        value: JSON.parse(r.value),
+      }));
+    }
+    const out: PluginDataDumpRow[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const full = localStorage.key(i);
+      if (!full || !full.startsWith(`${DATA_PREFIX}:`)) continue;
+      const parts = full.slice(DATA_PREFIX.length + 1).split(':');
+      if (parts.length < 3) continue;
+      const raw = localStorage.getItem(full);
+      if (raw == null) continue;
+      try {
+        out.push({
+          namespace: parts[0],
+          collection: parts[1],
+          key: parts.slice(2).join(':'),
+          value: JSON.parse(raw),
+        });
+      } catch {
+        /* 跳过损坏记录 */
+      }
+    }
+    return out;
+  }
+
+  /** 按行写回（导入备份用）；同 namespace/collection/key 直接覆盖 */
+  async restoreRows(rows: PluginDataDumpRow[]): Promise<number> {
+    let applied = 0;
+    for (const row of rows) {
+      await this.put('core', row.namespace, row.collection, row.key, row.value);
+      applied += 1;
+    }
+    return applied;
   }
 
   // ---------------- 保留期（tombstone） ----------------

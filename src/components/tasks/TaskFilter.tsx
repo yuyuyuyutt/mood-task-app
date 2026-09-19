@@ -1,15 +1,11 @@
-//src/components/tasks/TaskFilter.tsx
+// src/components/tasks/TaskFilter.tsx
+// 筛选/排序工具条。设计取舍：
+// - 从"大白卡片"压缩成一条工具条，把纵向空间让给任务列表本身（列表才是页面主体）；
+// - 一级筛选（全部/今日/未完成/已完成/习惯）常驻为胶囊，二级（优先级/任务类型）收进"更多"，
+//   避免 10+ 个同等权重的按钮同时争夺注意力；
+// - 排序用原生 select：无额外文案、键盘可达、不占宽度。
 import React, { useState } from 'react';
-import { 
-  FaFilter, 
-  FaCalendar, 
-  FaCheck, 
-  FaClock, 
-  FaSortAmountDown, 
-  FaSortAmountUp,
-  FaHistory,
-  FaStar
-} from 'react-icons/fa';
+import { FaFilter, FaSort, FaSlidersH, FaStar, FaHistory } from 'react-icons/fa';
 
 interface TaskFilterProps {
   onFilterChange: (filter: string) => void;
@@ -24,6 +20,28 @@ interface TaskFilterProps {
   completedTasks: number;
 }
 
+const FILTERS = [
+  { id: 'all', label: '全部' },
+  { id: 'today', label: '今日' },
+  { id: 'pending', label: '未完成' },
+  { id: 'completed', label: '已完成' },
+  { id: 'habits', label: '习惯' },
+];
+
+const PRIORITIES = [
+  { id: 1, label: '高' },
+  { id: 2, label: '中' },
+  { id: 3, label: '低' },
+];
+
+const SORTS = [
+  { id: 'priority_asc', label: '优先级 高→低' },
+  { id: 'priority_desc', label: '优先级 低→高' },
+  { id: 'due_date', label: '截止日期' },
+  { id: 'created', label: '创建时间' },
+  { id: 'habit', label: '习惯优先' },
+];
+
 export const TaskFilter: React.FC<TaskFilterProps> = ({
   onFilterChange,
   onSortChange,
@@ -34,165 +52,129 @@ export const TaskFilter: React.FC<TaskFilterProps> = ({
   activePriority,
   activeHabitFilter,
   totalTasks,
-  completedTasks
+  completedTasks,
 }) => {
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
-  const filterOptions = [
-    { id: 'all', label: '展示所有', icon: <FaFilter className="w-4 h-4" /> },
-    { id: 'today', label: '今日的', icon: <FaCalendar className="w-4 h-4" /> },
-    { id: 'pending', label: '未完成', icon: <FaClock className="w-4 h-4" /> },
-    { id: 'completed', label: '已完成', icon: <FaCheck className="w-4 h-4" /> },
-    { id: 'habits', label: '习惯任务', icon: <FaHistory className="w-4 h-4" /> },
-  ];
-
-  const sortOptions = [
-    { id: 'priority_asc', label: '优先级（高到低）', icon: <FaSortAmountDown className="w-4 h-4" /> },
-    { id: 'priority_desc', label: '优先级（低到高）', icon: <FaSortAmountUp className="w-4 h-4" /> },
-    { id: 'due_date', label: '截止日期', icon: <FaCalendar className="w-4 h-4" /> },
-    { id: 'created', label: '创建日期', icon: <FaSortAmountDown className="w-4 h-4" /> },
-    { id: 'habit', label: '习惯任务优先', icon: <FaHistory className="w-4 h-4" /> },
-  ];
-
-  const priorityOptions = [
-    { id: null, label: '全部优先级', color: 'bg-gray-200 text-gray-800' },
-    { id: 1, label: '高', color: 'bg-red-100 text-red-800' },
-    { id: 2, label: '中', color: 'bg-yellow-100 text-yellow-800' },
-    { id: 3, label: '低', color: 'bg-blue-100 text-blue-800' },
-  ];
-
-  const habitOptions = [
-    { id: null, label: '全部任务', icon: <FaFilter className="w-4 h-4" /> },
-    { id: true, label: '仅习惯任务', icon: <FaHistory className="w-4 h-4" /> },
-    { id: false, label: '仅普通任务', icon: <FaStar className="w-4 h-4" /> },
-  ];
+  const [showMore, setShowMore] = useState(false);
+  const moreActiveCount =
+    (activePriority != null ? 1 : 0) + (activeHabitFilter != null ? 1 : 0);
 
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-      {/* 顶部统计信息 */}
-      <div className="flex flex-wrap items-center justify-between mb-6">
-        <div>
-          <div className="text-2xl font-bold text-gray-900">共 {totalTasks} 个任务</div>
-          <div className="text-sm text-gray-600 mt-1">
-            完成率: <span className="font-medium text-green-600">{completionRate}%</span>
-          </div>
-        </div>
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="text-sm text-primary-600 hover:text-primary-700 flex items-center"
-          type="button"
-        >
-          {showAdvanced ? '收起高级筛选' : '展开高级筛选'}
-        </button>
+    <div className="mb-2.5">
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
+        {/* 一级筛选 */}
+        <FaFilter className="mr-0.5 shrink-0 text-[10px] text-ink-3" aria-hidden />
+        {FILTERS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => onFilterChange(f.id)}
+            data-active={activeFilter === f.id}
+            className="chip"
+          >
+            {f.label}
+          </button>
+        ))}
+
+        <span aria-hidden className="mx-1.5 h-3.5 w-px shrink-0 bg-line" />
+
+        {/* 排序：原生 select，零冗余文案 */}
+        <label className="relative inline-flex shrink-0 items-center">
+          <FaSort
+            className="pointer-events-none absolute left-2.5 text-[10px] text-ink-3"
+            aria-hidden
+          />
+          <select
+            value={activeSort}
+            onChange={(e) => onSortChange(e.target.value)}
+            aria-label="排序方式"
+            className="cursor-pointer appearance-none rounded-full bg-transparent py-1 pr-2 pl-6.5 text-xs font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus:outline-none"
+          >
+            {SORTS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* 二级筛选入口 */}
+        {(onPriorityFilterChange || onHabitFilterChange) && (
+          <button
+            type="button"
+            onClick={() => setShowMore((v) => !v)}
+            aria-expanded={showMore}
+            className="chip"
+            data-active={showMore || moreActiveCount > 0}
+          >
+            <FaSlidersH className="text-[10px]" />
+            筛选
+            {moreActiveCount > 0 && (
+              <span className="tnum rounded-full bg-brand px-1.5 text-[10px] text-white">
+                {moreActiveCount}
+              </span>
+            )}
+          </button>
+        )}
+
+        {/* 完成率：唯一的进度读数，右对齐 */}
+        {completionRate > 0 && (
+          <span className="tnum ml-auto hidden text-[11px] text-ink-3 sm:inline">
+            完成率 {completionRate}%
+          </span>
+        )}
       </div>
 
-      {/* 基础筛选器 */}
-      <div className="mb-6">
-        <div className="flex flex-wrap gap-2">
-          {filterOptions.map(option => (
-            <button
-              key={option.id}
-              onClick={() => onFilterChange(option.id)}
-              className={`
-                flex items-center px-4 py-2 rounded-lg text-sm transition-colors
-                ${activeFilter === option.id
-                  ? 'bg-primary-100 text-primary-700 border border-primary-300'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }
-              `}
-              type="button"
-            >
-              <span className="mr-2">{option.icon}</span>
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 高级筛选器 */}
-      {showAdvanced && (
-        <div className="border-t pt-6 space-y-6">
-          {/* 任务类型筛选 */}
-          {onHabitFilterChange && (
-            <div>
-              <div className="flex items-center mb-3">
-                <FaHistory className="w-4 h-4 text-gray-500 mr-2" />
-                <span className="text-sm font-medium text-gray-700">任务类型</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {habitOptions.map(option => (
-                  <button
-                    key={option.id === null ? 'all' : option.id ? 'habit' : 'normal'}
-                    onClick={() => onHabitFilterChange(option.id)}
-                    className={`
-                      flex items-center px-4 py-2 rounded-lg text-sm transition-colors
-                      ${activeHabitFilter === option.id
-                        ? 'bg-primary-100 text-primary-700 border border-primary-300'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }
-                    `}
-                    type="button"
-                  >
-                    <span className="mr-2">{option.icon}</span>
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 优先级筛选 */}
+      {/* 二级筛选面板 */}
+      {showMore && (
+        <div className="panel-in mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-line bg-surface px-3 py-2.5">
           {onPriorityFilterChange && (
-            <div>
-              <div className="flex items-center mb-3">
-                <span className="text-sm font-medium text-gray-700">优先级</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {priorityOptions.map(option => (
-                  <button
-                    key={option.id === null ? 'all' : option.id}
-                    onClick={() => onPriorityFilterChange(option.id)}
-                    className={`
-                      px-4 py-2 rounded-lg text-sm transition-colors ${option.color}
-                      ${activePriority === option.id ? 'ring-2 ring-primary-500' : ''}
-                    `}
-                    type="button"
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 排序选项 */}
-          <div>
-            <div className="flex items-center mb-3">
-              <FaSortAmountDown className="w-4 h-4 text-gray-500 mr-2" />
-              <span className="text-sm font-medium text-gray-700">排序方式</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-              {sortOptions.map(option => (
+            <div className="flex items-center gap-1">
+              <span className="label mr-1">优先级</span>
+              <button
+                type="button"
+                onClick={() => onPriorityFilterChange(null)}
+                data-active={activePriority == null}
+                className="chip"
+              >
+                不限
+              </button>
+              {PRIORITIES.map((p) => (
                 <button
-                  key={option.id}
-                  onClick={() => onSortChange(option.id)}
-                  className={`
-                    flex items-center justify-center px-4 py-3 rounded-lg text-sm transition-colors
-                    ${activeSort === option.id
-                      ? 'bg-primary-100 text-primary-700 border border-primary-300'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }
-                  `}
+                  key={p.id}
                   type="button"
+                  onClick={() => onPriorityFilterChange(p.id)}
+                  data-active={activePriority === p.id}
+                  className="chip"
                 >
-                  <span className="mr-2">{option.icon}</span>
-                  {option.label}
+                  {p.label}
                 </button>
               ))}
             </div>
-          </div>
+          )}
+
+          {onHabitFilterChange && (
+            <div className="flex items-center gap-1">
+              <span className="label mr-1">类型</span>
+              {[
+                { id: null as boolean | null, label: '不限', icon: null },
+                { id: false, label: '普通', icon: <FaStar className="text-[10px]" /> },
+                { id: true, label: '习惯', icon: <FaHistory className="text-[10px]" /> },
+              ].map((o) => (
+                <button
+                  key={o.label}
+                  type="button"
+                  onClick={() => onHabitFilterChange(o.id)}
+                  data-active={activeHabitFilter === o.id}
+                  className="chip"
+                >
+                  {o.icon}
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -26,17 +26,7 @@ export function getBuiltinVersion(id: string): string | undefined {
   return toml ? builtinTomlVersion(toml) : undefined;
 }
 
-/** 简易语义化版本比较：a>b -> 1，相等 -> 0，a<b -> -1 */
-export function compareVersions(a: string, b: string): number {
-  const pa = a.split('+')[0].split('-')[0].split('.').map(Number);
-  const pb = b.split('+')[0].split('-')[0].split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] || 0;
-    const y = pb[i] || 0;
-    if (x > y) return 1;
-    if (x < y) return -1;
-  }
-  return 0;
-}
+/** 简易语义化版本比较：a>b -> 1，相等 -> 0，a<b -> -1（统一实现见 utils/version） */
+export { compareVersions } from '../../utils/version';
 
 export const BUILTIN_PLUGIN_IDS = Object.keys(BUILTIN_PLUGINS);

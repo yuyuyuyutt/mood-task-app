@@ -21,6 +21,7 @@ import {
   FaDatabase,
 } from 'react-icons/fa';
 import { CORE_VERSION, type InstalledPlugin } from '../../plugins/runtime';
+import { compareVersions } from '../../utils/version';
 
 interface PluginListItemProps {
   plugin: InstalledPlugin;
@@ -30,25 +31,6 @@ interface PluginListItemProps {
   /** 窗口化模式：行使用固定高度（与 useWindowedList 的 itemHeight 一致） */
   windowed?: boolean;
   itemHeight?: number;
-}
-
-/** 版本比较：v1 > v2 → 1，相等 → 0，v1 < v2 → -1 */
-function compareVersions(v1: string, v2: string): number {
-  const parse = (v: string): number[] =>
-    v
-      .split('-')[0]
-      .split('+')[0]
-      .split('.')
-      .map(Number);
-  const a = parse(v1);
-  const b = parse(v2);
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const x = a[i] || 0;
-    const y = b[i] || 0;
-    if (x > y) return 1;
-    if (x < y) return -1;
-  }
-  return 0;
 }
 
 function checkCompatibility(plugin: InstalledPlugin): { compatible: boolean; message: string } {
