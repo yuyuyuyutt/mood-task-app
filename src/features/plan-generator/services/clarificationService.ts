@@ -3,9 +3,12 @@
 // 优先让本地 LLM 生成 3–5 个强相关澄清问题（覆盖：量化目标 / 现有基础 / 资源约束 / 偏好风格 / 成功标准）；
 // LLM 未开启、调用失败或 JSON 解析失败 → 回退到预定义通用问题模板（source='template'）。
 import { asString, asStringArray, extractJsonObject } from './jsonExtract';
-import { callOllamaText, type LLMConfig } from './llmClient';
-import { buildClarifyPrompt } from './prompts';
+import type { LLMConfig } from './llmClient';
+import { callChat } from './llm/chatClient';
+import { CLARIFY_SCHEMA } from './llm/schemas';
+import { PROMPT_VERSION, buildClarifyMessages } from './prompts';
 import { llmTasks } from './llmTaskManager';
+import { TraceRecorder } from './agent/trace';
 import type { ClarifyQuestionKind, ClarifyResult, ClarifyingQuestion } from '../types';
 
 const KINDS: ClarifyQuestionKind[] = ['number', 'text', 'single', 'multi'];
@@ -105,33 +108,54 @@ export interface ClarifyParams {
 /**
  * 生成澄清问题。
  * 降级路径：LLM 未开启 → template；调用/解析失败 → template（附 fallbackReason）。
+ * 每次调用都会写入一条 run trace（含降级原因），供可观测面板回看。
  */
 export async function generateClarifyingQuestions(params: ClarifyParams): Promise<ClarifyResult> {
   const { goal, days, userType, config, signal } = params;
+  const trace = new TraceRecorder('clarify', goal);
 
   if (!config.enabled || !config.model) {
+    const reason = config.enabled ? '未选择模型' : 'AI 增强未开启';
+    trace.fallback('clarify', reason);
+    const finished = trace.setLevel('rule').end();
     return {
       questions: genericClarifyQuestions(goal),
       source: 'template',
-      fallbackReason: config.enabled ? '未选择模型' : 'AI 增强未开启',
+      fallbackReason: reason,
+      promptVersion: PROMPT_VERSION,
+      traceId: finished.id,
     };
   }
 
   try {
-    const text = await llmTasks.run({
-      kind: 'clarify',
-      key: 'clarify',
-      timeoutMs: config.timeoutMs ?? 90_000,
-      signal,
-      run: (taskSignal) =>
-        callOllamaText(buildClarifyPrompt(goal, days, userType), config, { signal: taskSignal }),
-    });
-    return { questions: parseClarifyJson(text), source: 'llm' };
+    const res = await trace.measure('chat:clarify', 'llm', () =>
+      llmTasks.run({
+        kind: 'clarify',
+        key: 'clarify',
+        timeoutMs: config.timeoutMs ?? 90_000,
+        signal,
+        run: (taskSignal) =>
+          callChat(buildClarifyMessages(goal, days, userType), config, {
+            signal: taskSignal,
+            schema: CLARIFY_SCHEMA,
+          }),
+      }),
+    );
+    trace.setModel(res.model).setSchemaApplied(res.schemaApplied);
+    for (const w of res.warnings) trace.warn(w);
+    const questions = parseClarifyJson(res.text);
+    const finished = trace.end();
+    return { questions, source: 'llm', promptVersion: PROMPT_VERSION, traceId: finished.id };
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    trace.fallback('clarify', reason);
+    const finished = trace.end();
     return {
       questions: genericClarifyQuestions(goal),
       source: 'template',
-      fallbackReason: err instanceof Error ? err.message : String(err),
+      fallbackReason: reason,
+      promptVersion: PROMPT_VERSION,
+      traceId: finished.id,
     };
   }
 }

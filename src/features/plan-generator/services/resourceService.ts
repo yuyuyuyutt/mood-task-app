@@ -18,14 +18,25 @@ import type {
   ResourceSourceId,
   ResourceType,
   SearchKeyword,
+  SemanticSummary,
 } from '../types';
 import { asNumber, asString, extractJsonObject } from './jsonExtract';
-import { callOllamaText, type LLMConfig } from './llmClient';
-import { buildFallbackKeywords, buildKeywordPrompt } from './prompts';
+import type { LLMConfig } from './llmClient';
+import { callChat } from './llm/chatClient';
+import { KEYWORD_SCHEMA } from './llm/schemas';
+import { PROMPT_VERSION, buildFallbackKeywords, buildKeywordMessages } from './prompts';
 import { llmTasks } from './llmTaskManager';
+import { TraceRecorder } from './agent/trace';
 import { buildJumpLinkGroups } from './resources/jumpLinks';
 import { searchBilibili } from './resources/bilibiliSource';
 import { matchManualResources, searchSearxng } from './resources/searxngSource';
+import { buildQueryText } from './rag/embedding';
+import {
+  applySemanticRerank,
+  runSemanticRetrieval,
+  summarizeSemantic,
+  type RagRuntime,
+} from './rag/hybridRetriever';
 
 /** 每类资源最多保留条数 */
 export const MAX_PER_TYPE = 5;
@@ -81,30 +92,49 @@ export interface ExtractKeywordParams {
 /** 阶段 2 第一步：提取检索关键词（LLM 失败 → 模板关键词） */
 export async function extractKeywords(params: ExtractKeywordParams): Promise<KeywordResult> {
   const { goal, days, answers, userType, config, signal } = params;
+  const trace = new TraceRecorder('keywords', goal);
+
   if (!config.enabled || !config.model) {
+    const reason = config.enabled ? '未选择模型' : 'AI 增强未开启';
+    trace.fallback('keywords', reason);
+    const finished = trace.setLevel('rule').end();
     return {
       keywords: buildFallbackKeywords(goal),
       source: 'template',
-      fallbackReason: config.enabled ? '未选择模型' : 'AI 增强未开启',
+      fallbackReason: reason,
+      promptVersion: PROMPT_VERSION,
+      traceId: finished.id,
     };
   }
   try {
-    const text = await llmTasks.run({
-      kind: 'keywords',
-      key: 'keywords',
-      timeoutMs: config.timeoutMs ?? 90_000,
-      signal,
-      run: (taskSignal) =>
-        callOllamaText(buildKeywordPrompt(goal, days, answers, userType), config, {
-          signal: taskSignal,
-        }),
-    });
-    return { keywords: parseKeywordsJson(text), source: 'llm' };
+    const res = await trace.measure('chat:keywords', 'llm', () =>
+      llmTasks.run({
+        kind: 'keywords',
+        key: 'keywords',
+        timeoutMs: config.timeoutMs ?? 90_000,
+        signal,
+        run: (taskSignal) =>
+          callChat(buildKeywordMessages(goal, days, answers, userType), config, {
+            signal: taskSignal,
+            schema: KEYWORD_SCHEMA,
+          }),
+      }),
+    );
+    trace.setModel(res.model).setSchemaApplied(res.schemaApplied);
+    for (const w of res.warnings) trace.warn(w);
+    const keywords = parseKeywordsJson(res.text);
+    const finished = trace.end();
+    return { keywords, source: 'llm', promptVersion: PROMPT_VERSION, traceId: finished.id };
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    trace.fallback('keywords', reason);
+    const finished = trace.end();
     return {
       keywords: buildFallbackKeywords(goal),
       source: 'template',
-      fallbackReason: err instanceof Error ? err.message : String(err),
+      fallbackReason: reason,
+      promptVersion: PROMPT_VERSION,
+      traceId: finished.id,
     };
   }
 }
@@ -277,11 +307,20 @@ export interface CollectParams {
   manualResources?: ManualResource[];
   scoreContext: ScoreContext;
   signal?: AbortSignal;
+  /**
+   * 语义检索（可选）：传入即尝试向量召回并与启发式排序做 RRF 融合。
+   * 不传 = 完全沿用原来的纯关键词路径（既有测试与浏览器降级场景都是这条路径）。
+   */
+  rag?: {
+    runtime: RagRuntime;
+    /** 用户目标：与关键词一起构成检索 query */
+    goal: string;
+  };
 }
 
 /** 采集三层资源，统一为 ResourceBundle（任何一层失败都静默降级） */
 export async function collectResources(params: CollectParams): Promise<ResourceBundle> {
-  const { keywords, settings, manualResources = [], scoreContext, signal } = params;
+  const { keywords, settings, manualResources = [], scoreContext, signal, rag } = params;
   const warnings: string[] = [];
   const collected: ResourceItem[] = [];
   const layers: LayerStatus[] = [];
@@ -365,18 +404,41 @@ export async function collectResources(params: CollectParams): Promise<ResourceB
   layer3.count = jumpGroups.reduce((s, g) => s + g.links.length, 0);
   layers.push(layer3);
 
-  // ---- 统一：打分 -> 去重 -> 截断 -> 分组 ----
+  // ---- 统一：打分 -> 去重 -> 截断 ----
   const scored = collected.map((item) => scoreResource(item, scoreContext));
   scored.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   const { items: unique, removed } = dedupeResources(scored);
   if (removed > 0) warnings.push(`去重合并 ${removed} 条重复资源`);
   const capped = unique.slice(0, MAX_TOTAL);
-  const grouped = groupAndTruncate(capped);
+
+  // ---- 语义重排（可选，P3）：向量召回 ⊕ 启发式排序，RRF 融合 ----
+  // 刻意放在"截断之后"：只对最终候选做嵌入，避免为会被丢掉的结果付 embedding 成本。
+  let rankedItems = capped;
+  let semantic: SemanticSummary | undefined;
+  if (rag && capped.length > 1 && !signal?.aborted) {
+    const run = await runSemanticRetrieval({
+      items: capped,
+      query: buildQueryText(rag.goal, keywords),
+      runtime: rag.runtime,
+      signal,
+    });
+    semantic = run.summary;
+    if (run.summary.enabled) {
+      rankedItems = applySemanticRerank(capped, run.ranked);
+      const line = summarizeSemantic(run.summary);
+      if (line) warnings.push(line);
+    } else if (run.summary.degradedReason) {
+      // 语义失败不影响可用性：明确告知原因，排序仍用启发式结果
+      warnings.push(`语义检索已降级为关键词排序：${run.summary.degradedReason}`);
+    }
+  }
+
+  const grouped = groupAndTruncate(rankedItems);
 
   const byKeyword = ordered
     .map((kw) => ({
       keyword: kw.keyword,
-      items: capped.filter((i) => i.keyword === kw.keyword).slice(0, MAX_PER_KEYWORD),
+      items: rankedItems.filter((i) => i.keyword === kw.keyword).slice(0, MAX_PER_KEYWORD),
     }))
     .filter((g) => g.items.length > 0);
 
@@ -387,7 +449,7 @@ export async function collectResources(params: CollectParams): Promise<ResourceB
     warnings.push('联网检索全部失败，已降级为仅"平台跳转按钮"，计划仍会正常生成');
   }
 
-  return { items: capped, grouped, byKeyword, jumpGroups, layers, warnings };
+  return { items: rankedItems, grouped, byKeyword, jumpGroups, layers, warnings, semantic };
 }
 
 /** 统计信息（UI 展示用） */

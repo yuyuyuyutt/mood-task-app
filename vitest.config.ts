@@ -14,7 +14,15 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/__tests__/**/*.test.ts', 'src/**/*.test.ts'],
+    // `.tsx` 用例只用于**服务端渲染冒烟**（react-dom/server 的 renderToStaticMarkup，
+    // 不需要 jsdom）：确认组件在给定数据下能渲染出预期文案。
+    // 需要交互（点击/输入/悬浮）的组件测试仍要另加 jsdom + @testing-library。
+    include: [
+      'src/**/__tests__/**/*.test.ts',
+      'src/**/*.test.ts',
+      'src/**/__tests__/**/*.test.tsx',
+      'src/**/*.test.tsx',
+    ],
     // 每个用例前恢复被 spy 的原实现，避免跨用例污染
     restoreMocks: true,
   },

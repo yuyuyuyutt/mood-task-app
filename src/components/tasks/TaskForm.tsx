@@ -389,49 +389,34 @@ export const TaskForm: React.FC<TaskFormProps> = ({
                 </div>
               )}
 
-              {/* 优先级和状态 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* 优先级 */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    优先级
-                  </label>
-                  <div className="flex space-x-2">
-                    {PRIORITY_OPTIONS.map(option => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setFormData({...formData, priority: option.value as 1 | 2 | 3})}
-                        className={`flex-1 py-3 px-4 rounded-lg border transition-all ${
-                          formData.priority === option.value
-                            ? `${option.value === 1 ? 'bg-red-50 border-red-200 text-red-700' : 
-                                option.value === 2 ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : 
-                                'bg-blue-50 border-blue-200 text-blue-700'} font-medium`
-                            : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 状态 - 如果不是习惯任务才显示 */}
-                {!formData.is_habit && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      状态
-                    </label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) => setFormData({...formData, status: e.target.value as Task['status']})}
-                      className="input"
+              {/* 优先级（状态不在这里改：见下方提示） */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  优先级
+                </label>
+                <div className="flex space-x-2">
+                  {PRIORITY_OPTIONS.map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFormData({...formData, priority: option.value as 1 | 2 | 3})}
+                      className={`flex-1 py-3 px-4 rounded-lg border transition-all ${
+                        formData.priority === option.value
+                          ? `${option.value === 1 ? 'bg-red-50 border-red-200 text-red-700' : 
+                              option.value === 2 ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : 
+                              'bg-blue-50 border-blue-200 text-blue-700'} font-medium`
+                          : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                      }`}
                     >
-                      <option value="pending">暂缓</option>
-                      <option value="in_progress">进行中</option>
-                      <option value="completed">完成</option>
-                    </select>
-                  </div>
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                {/* 状态改由任务行上的徽标点击切换：一处入口，避免两处口径不一致 */}
+                {!formData.is_habit && (
+                  <p className="mt-3 text-xs text-gray-500">
+                    状态（暂缓 / 进行中 / 完成）在任务行上点徽标直接切换，这里不再重复设置。
+                  </p>
                 )}
               </div>
 

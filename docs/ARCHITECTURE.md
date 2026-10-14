@@ -7,7 +7,7 @@
 ```mermaid
 flowchart TB
   subgraph UI["界面层 src/pages · src/components"]
-    P["内置页面<br/>TaskList / SchedulePlanner / Statistics / Settings / PluginManager"]
+    P["内置页面<br/>TaskList / StudyWorkspace / SchedulePlanner / Statistics / Settings / PluginManager"]
     L["Layout（侧边栏 + 顶栏 + 页脚）"]
     W["plan-generator 向导（挂在 TaskList 底部）"]
   end
@@ -126,8 +126,11 @@ UI 入口是 `components/plugins/TrashPanel.tsx`。
 |---|---|
 | `api/index.ts` | **任务**的全部 CRUD（`invoke` 封装 + JSON 字段的序列化/反序列化）；心情数据不在这里，见 `plugins/pages/moodData.ts` |
 | `api/scheduleStore.ts` | 时段面板的独立数据域，命名空间 `__schedule`，按天存（collection = 日期） |
+| `api/studyStore.ts` | 学习工作区的独立数据域，命名空间 `__study`（`sessions` / `notes` / `progress` / `tutor`）；随备份导出并在报告里单独计数 |
 | `components/Layout.tsx` | 侧边栏 / 顶栏 / 页脚；合并核心导航与插件导航 |
-| `components/tasks/` | `TaskCard` 完整卡片、`TaskCompactRow` 紧凑行、`TaskFilter` 筛选排序、`TaskForm` 表单 |
+| `components/tasks/` | `TaskCard` 完整卡片、`TaskCompactRow` 紧凑行（含**行上状态徽标**：点击 暂缓→进行中→完成）、`TaskHoverCard` 悬浮详情卡（portal + 视口定位）、`taskDetails.ts` 展示层解析（详情与来源分离、状态循环、日期可读化）、`TaskFilter` 筛选排序、`TaskForm` 表单（状态不在表单里改） |
+| `features/study/components/` | `StudyFocusCard`（聚焦一条任务）、`ReadingView`（阅读优先的正文视图：Markdown 还原 + 专注阅读）、`MarkdownText`（Markdown 子集 → React 元素，不走 innerHTML）、`TutorPanel`（辅导员对话）、`PomodoroCard`、`StudyNotesCard`、`StudyReviewCard` |
+| `features/study`（纯函数） | `pomodoro` 状态机、`reading` 白名单闸门、`markdown` Markdown 子集解析、`planLink` 任务↔资源还原、`review` 间隔复习、`tutor` 先检索再回答、`sessionMemory` 回流记忆 |
 | `components/mood/` | `MoodCalendar` 月历、`MoodEntryForm` 打分录入 |
 | `components/plugins/` | 安装弹窗、详情弹窗、卸载确认、回收站、列表行 |
 | `pages/` | 5 个内置页面，见下表 |
@@ -145,7 +148,8 @@ UI 入口是 `components/plugins/TrashPanel.tsx`。
 
 | 页面 | 路由 | 职责与注意点 |
 |---|---|---|
-| `TaskList.tsx` | `/tasks` | 进行中 / 历史双视图；普通任务完成播"撕便签"动画后入历史，习惯任务原地按日打卡；筛选 all/pending/completed/habits/today 与 5 种排序；底部嵌入 `PlanGeneratorWorkspace` |
+| `TaskList.tsx` | `/tasks` | 进行中 / 历史双视图；普通任务完成播"撕便签"动画后入历史，习惯任务原地按日打卡；筛选 all/pending/completed/habits/today 与 5 种排序；**计划任务按队列只放行一条**（完成一条才出现下一条，见 `features/plan-generator/services/planQueue.ts`）；**悬浮行浮现详情卡**；行上徽标点击切换状态；底部嵌入 `PlanGeneratorWorkspace` |
+| `StudyWorkspace.tsx` | `/study` | **执行计划**的地方：聚焦"下一条待做"（复用 `planQueue` 语义）→ 白名单阅读模式 → 番茄钟计时 → 收工写会话与记忆 → 间隔复习（1/3/7/16 天）；侧栏为计时/复习/速记；数据落在 `__study` 命名空间，随备份导出（见 `docs/STUDY-WORKSPACE.md`） |
 | `SchedulePlanner.tsx` | `/schedule` | 周视图 6 时段 × 7 天 = 42 格；数据与任务表**完全解耦**；时间拖动按 5 分钟吸附 |
 | `Statistics.tsx` | `/stats` | 本周/月/年切换**真实生效**（窗口 7/30/365 天，趋势与上一等长周期对比）；心情数据经 `dataStore.list('core','mood','entries')` 读取，**仅当 `mood-diary` 插件启用时**才有数据，否则降级为空 |
 | `Settings.tsx` | `/settings` | 主题由插件托管（`THEME_PLUGIN_IDS = ['dark-theme','wireframe']`，同时只允许一个生效）；应用偏好走 `utils/appSettings.ts` 持久化；含个人画像、资源联网、数据备份三张卡片 |

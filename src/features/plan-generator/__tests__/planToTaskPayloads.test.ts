@@ -1,7 +1,7 @@
 // src/features/plan-generator/__tests__/planToTaskPayloads.test.ts
 // 计划 -> 数据库任务载荷 的纯函数测试（验证"按具体日期生成真实任务"的映射规则）。
 import { describe, expect, it } from 'vitest';
-import { PLAN_TAG, planToTaskPayloads } from '../services/planToTaskPayloads';
+import { AI_TAG_PREFIX, PLAN_TAG, aiGeneratedTag, planToTaskPayloads } from '../services/planToTaskPayloads';
 import { generatePlan } from '../services/planGenerator';
 import type { GeneratedPlan } from '../types';
 
@@ -47,13 +47,15 @@ describe('planToTaskPayloads', () => {
     });
   });
 
-  it('写入标签与描述便于识别来源', () => {
+  it('来源信息走 tags，详情只写内容（目标 / 进度）', () => {
     const plan = makePlan('tasks', 1);
     const [first] = planToTaskPayloads(plan);
     expect(first.tags).toContain(PLAN_TAG);
     expect(first.tags).toContain('学习');
     expect(first.description).toContain('学习 Python');
     expect(first.description).toContain('第 1/1 天');
+    // "来自「个性化计划生成器」"这类来源文案不再占用详情（由 PLAN_TAG 承担）
+    expect(first.description).not.toContain('个性化计划生成器');
   });
 
   it('事件形态：时长与日期同样落库', () => {
@@ -68,15 +70,29 @@ describe('planToTaskPayloads', () => {
     expect(payloads[0].description).toContain(`${firstEvent.startTime}-${firstEvent.endTime}`);
   });
 
-  it('AI 润色信息写入描述（模型名/建议）', () => {
+  it('AI 生成信息写成标签而不是详情；建议仍留在详情里', () => {
     const plan: GeneratedPlan = {
       ...makePlan('tasks', 1),
       llmModel: 'qwen2.5:7b',
       aiNarrative: '先把环境装好，再每天推进一节。',
     };
     const [first] = planToTaskPayloads(plan);
-    expect(first.description).toContain('qwen2.5:7b');
+    // 标签：AI 生成 · 模型名
+    expect(first.tags).toContain(aiGeneratedTag('qwen2.5:7b'));
+    expect((first.tags ?? []).some((t) => t.startsWith(AI_TAG_PREFIX))).toBe(true);
+    // 详情里不再出现模型名（那是元信息），但 AI 的"建议"是内容，保留
+    expect(first.description).not.toContain('qwen2.5:7b');
+    expect(first.description).not.toContain('AI 润色');
     expect(first.description).toContain('先把环境装好');
+  });
+
+  it('aiGeneratedTag：没有模型名（规则生成）时不产生标签', () => {
+    expect(aiGeneratedTag('')).toBeNull();
+    expect(aiGeneratedTag(null)).toBeNull();
+    expect(aiGeneratedTag('qwen2.5:7b')).toBe('AI 生成 · qwen2.5:7b');
+
+    const [ruleOnly] = planToTaskPayloads(makePlan('tasks', 1));
+    expect((ruleOnly.tags ?? []).some((t) => t.startsWith(AI_TAG_PREFIX))).toBe(false);
   });
 
   it('limitPerDay 可限制每天写入条数', () => {

@@ -6,7 +6,8 @@
 //   向导卸载/上一步返回时 cancelAll()，立刻中止在途请求；
 // - 避免竞态：同一 key（如 'clarify'）只保留最新一次调用，旧的自动取消；
 // - 统一超时与错误语义，便于上层静默降级。
-export type LlmTaskKind = 'clarify' | 'keywords' | 'plan';
+/** study = 学习工作区的辅导员对话（流式，见 features/study/tutor.ts） */
+export type LlmTaskKind = 'clarify' | 'keywords' | 'plan' | 'adjust' | 'study';
 
 export interface LlmRunOptions<T> {
   kind: LlmTaskKind;

@@ -4,6 +4,7 @@ import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TaskList } from './pages/TaskList';
+import { StudyWorkspace } from './pages/StudyWorkspace';
 import { SchedulePlanner } from './pages/SchedulePlanner';
 import { Statistics } from './pages/Statistics';
 import { Settings } from './pages/Settings';
@@ -33,6 +34,8 @@ function AppRoutes() {
         <Routes>
           <Route path="/" element={<Navigate to="/tasks" replace />} />
           <Route path="/tasks" element={<TaskList />} />
+          {/* 学习工作区：执行计划的地方（聚焦下一条任务 → 阅读 → 计时 → 辅导 → 复习） */}
+          <Route path="/study" element={<StudyWorkspace />} />
           <Route path="/schedule" element={<SchedulePlanner />} />
           <Route path="/stats" element={<Statistics />} />
           <Route path="/settings" element={<Settings />} />

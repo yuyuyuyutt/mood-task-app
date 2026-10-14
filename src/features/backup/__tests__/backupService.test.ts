@@ -5,10 +5,14 @@ import {
   BACKUP_FORMAT,
   BACKUP_VERSION,
   backupFileName,
+  countStudyRows,
   createBackup,
   parseBackup,
+  restoreBackup,
   type BackupHost,
 } from '../backupService';
+import { loadAppSettings } from '../../../utils/appSettings';
+import type { PluginDataDumpRow } from '../../../plugins/runtime/dataStore';
 
 const host: BackupHost = {
   dumpPluginData: async () => [],
@@ -64,9 +68,47 @@ describe('createBackup', () => {
     expect(backup.format).toBe(BACKUP_FORMAT);
     expect(backup.data.tasks).toEqual([]);
     expect(backup.data.pluginData).toEqual([]);
-    expect(backup.data.planner).toEqual({ kv: [], plans: [], resources: [] });
+    // memory 为 v3 新增字段；无 IndexedDB 时同样降级为空数组
+    expect(backup.data.planner).toEqual({ kv: [], plans: [], resources: [], memory: [] });
     expect(backup.data.userProfile).toBeNull();
     expect(typeof backup.data.appSettings.language).toBe('string');
+  });
+});
+
+describe('学习工作区的备份口径', () => {
+  it('__study 命名空间的行会被单独计数（让用户在界面上能核对"笔记真的备进去了"）', () => {
+    const rows: PluginDataDumpRow[] = [
+      { namespace: '__study', collection: 'sessions', key: 's1', value: { id: 's1' } },
+      { namespace: '__study', collection: 'notes', key: 'n1', value: { id: 'n1' } },
+      { namespace: '__schedule', collection: '2026-09-28', key: 'a', value: { title: '写周报' } },
+      { namespace: 'mood', collection: 'entries', key: 'm1', value: { score: 4 } },
+    ];
+    expect(countStudyRows(rows)).toBe(2);
+    expect(countStudyRows(undefined)).toBe(0);
+  });
+
+  it('恢复备份时报告里带上学习工作区条数（数据本来就在 pluginData 里，只是点清楚）', async () => {
+    const rows: PluginDataDumpRow[] = [
+      { namespace: '__study', collection: 'notes', key: 'n1', value: { id: 'n1' } },
+      { namespace: 'mood', collection: 'entries', key: 'm1', value: { score: 4 } },
+    ];
+    const report = await restoreBackup(
+      {
+        format: BACKUP_FORMAT,
+        version: BACKUP_VERSION,
+        exportedAt: '2026-09-28T00:00:00.000Z',
+        data: {
+          tasks: [],
+          pluginData: rows,
+          appSettings: loadAppSettings(),
+          userProfile: null,
+          planner: { kv: [], plans: [], resources: [], memory: [] },
+        },
+      },
+      { dumpPluginData: async () => [], restorePluginData: async (input) => input.length },
+    );
+    expect(report.pluginRows).toBe(2);
+    expect(report.studyRows).toBe(1);
   });
 });
 

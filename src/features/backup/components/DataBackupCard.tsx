@@ -12,7 +12,13 @@ import {
 } from 'react-icons/fa';
 import { usePluginHost } from '../../../plugins/runtime';
 import { copyText, downloadJson } from '../../../utils/download';
-import { backupFileName, createBackup, parseBackup, restoreBackup } from '../backupService';
+import {
+  backupFileName,
+  countStudyRows,
+  createBackup,
+  parseBackup,
+  restoreBackup,
+} from '../backupService';
 
 type Status = { type: 'success' | 'error'; text: string } | null;
 
@@ -43,7 +49,12 @@ export const DataBackupCard: React.FC = () => {
     run('export', async () => {
       const backup = await createBackup(host);
       downloadJson(backupFileName(), backup);
-      return `已生成备份：任务 ${backup.data.tasks.length} 个 · 插件数据 ${backup.data.pluginData.length} 条 · 计划 ${backup.data.planner.plans.length} 份`;
+      const studyRows = countStudyRows(backup.data.pluginData);
+      return (
+        `已生成备份：任务 ${backup.data.tasks.length} 个 · 插件数据 ${backup.data.pluginData.length} 条` +
+        `（含学习工作区 ${studyRows} 条）· 计划 ${backup.data.planner.plans.length} 份` +
+        ` · 记忆 ${backup.data.planner.memory.length} 条`
+      );
     });
 
   const handleCopy = () =>
@@ -74,7 +85,9 @@ export const DataBackupCard: React.FC = () => {
       const report = await restoreBackup(parsed.backup, host);
       return (
         `恢复完成：新增任务 ${report.tasksAdded}（跳过重复 ${report.tasksSkipped}）· ` +
-        `插件数据 ${report.pluginRows} 条 · 计划数据 ${report.plannerKv + report.plannerPlans + report.plannerResources} 条` +
+        `插件数据 ${report.pluginRows} 条 · 计划数据 ${
+          report.plannerKv + report.plannerPlans + report.plannerResources
+        } 条 · 记忆 ${report.plannerMemory} 条 · 学习工作区 ${report.studyRows} 条` +
         `（重新进入页面即可看到最新数据）`
       );
     });

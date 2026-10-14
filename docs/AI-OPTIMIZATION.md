@@ -18,9 +18,38 @@ plan-generator 已实现一条**三阶段 LLM 管线**（本地 Ollama 优先，
 
 **三个概念的现状评级：**
 
-- **Prompt Engineering：★★★☆☆** — 已有集中管理、角色设定、硬性约束、JSON 契约、兜底模板。缺：结构化输出约束、few-shot、system/user 分离、版本化。
-- **RAG：★★☆☆☆** — 有"检索"（搜索引擎层）但没有"增强生成"闭环：检索结果只以标题/URL 行进 prompt，**无向量召回、无内容理解、无历史记忆**。
-- **Tool Calling：★☆☆☆☆** — **完全没有**。LLM 只在固定点位被调用（生文本），不能主动调用任何工具；编排是硬编码的三段式。
+- **Prompt Engineering：★★★★☆** — 已有集中管理、角色设定、硬性约束、JSON 契约、兜底模板，
+  并且已完成 **PE-1（JSON Schema 结构化输出）/ PE-2（`/api/chat`，system-user 分离）/ PE-4（`PROMPT_VERSION` 版本化）**。
+  仍缺：few-shot（PE-3）、约束自检二段式（PE-5）。
+- **RAG：★★★★★** — 检索侧已完成 **RAG-1（本地 embedding + 向量索引 + 语义召回）**、
+  **RAG-2（正文抓取 → 分块 → 只注入最相关证据 + 提示注入隔离 + 证据级引用白名单）**、
+  **RAG-3（历史记忆结构化召回）**，并且 citation precision 已经变成**有门禁的指标**
+  （`npm run eval`，对抗用例专门守"编造的引用必须被拦住"）。
+  仍缺：**RAG-4 方法论语料知识库**（纯加分项）。
+- **Tool Calling / Agent：★★★★☆** — 已有完整的工具基建（**TC-1**：白名单注册、zod 参数校验、
+  scope 权限门、写操作 diff 预览 + 用户确认、一次性令牌）、首个场景 **TC-2 对话式计划调整**
+  （`services/agent/adjustPlan.ts`），以及 **TC-4 智能体式计划生成**
+  （`services/agent/agents/*`：四角色协作 + 确定性编排 + Critic 校验与修正轮 + 四级降级）。
+  仍缺：原生 function calling（当前是 prompt-based 决策）、跨轮 ReAct 循环。
+
+**落地状态对照（2026-09-28）** — 逐条实现进度与证据锚点见
+[AGENT-ARCHITECTURE.md](AGENT-ARCHITECTURE.md) 第 9 节「进度追踪表」：
+
+| 编号 | 状态 | 落点 |
+|---|---|---|
+| PE-1 JSON Schema | ✅ | `services/llm/schemas.ts`、`services/llm/chatClient.ts` |
+| PE-2 system/user 分离 | ✅ | `services/prompts.ts`、`services/llm/chatClient.ts` |
+| PE-4 prompt 版本化 | ✅ | `prompts.ts` 的 `PROMPT_VERSION` → `plan.generation.promptVersion` |
+| TC-1 工具基础设施 | ✅ | `services/agent/tools/{registry,gate}.ts` |
+| TC-2 对话式计划调整 | ✅ | `services/agent/adjustPlan.ts`、`components/PlanAdjustPanel.tsx` |
+| RAG-1 本地向量库 + 语义召回 | ✅ | `services/rag/{embedding,vectorStore,hybridRetriever}.ts`、`src-tauri/src/embeddings.rs` |
+| RAG-2 正文抓取 + 证据级引用 + 注入隔离 | ✅ | `services/rag/{chunking,contentCache,contentFetcher,evidence}.ts`、`services/agent/promptGuard.ts`、`src-tauri/src/content.rs` |
+| RAG-3 历史记忆 | ✅（结构化版） | `services/memory/*` |
+| RAG-4 方法论语料知识库 | ⬜ | 远期 |
+| TC-4 智能体式计划生成 | ✅ | `services/agent/agents/{protocol,critic,roles,orchestrator}.ts` |
+| PE-5 约束自检二段式 | ✅（等价实现） | Critic 的确定性校验 + 违规才触发的修正轮（`agents/critic.ts`、`orchestrator.ts`） |
+| TC-5 离线评测与门禁 | ✅ | `services/eval/*`、`npm run eval`、`.github/workflows/ci.yml` |
+| PE-3 few-shot / TC-3 全局命令面板 | ⬜ | 见本文档对应小节 |
 
 ---
 
@@ -111,7 +140,7 @@ plan-generator 已实现一条**三阶段 LLM 管线**（本地 Ollama 优先，
 
 - 全局命令面板（Ctrl+K）接一句"明天下午 3 点跑步 5 公里" → 模型 tool call `create_task({title, due, minutes})` → 表单预填充，用户确认提交。写路径全部复用现有 IPC 与校验，风险面小、演示效果好。
 
-### TC-4 智能体式计划生成（远期，P3）
+### TC-4 智能体式计划生成（✅ 已落地）
 
 - 把三阶段管线改造成一次 agentic run：模型自主决定要不要澄清、要不要检索、检索几轮，工具由宿主执行。**前提**是 PE-1/TC-1/TC-2 稳定后；本地 7B 模型的规划能力有限，建议保留现有管线为默认，agentic 作为实验开关——现有"规则兜底永不失败"的纪律在 agentic 场景下同样必须守住。
 

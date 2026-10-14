@@ -93,11 +93,32 @@ fn init_tables(conn: &rusqlite::Connection) -> Result<(), String> {
     )
     .map_err(|e: rusqlite::Error| format!("创建插件数据表失败: {}", e))?;
 
+    // 本地向量索引（语义检索）：向量以 f32 小端 BLOB 存储，检索在 Rust 侧做余弦 Top-K。
+    //
+    // 说明：**新表不需要写迁移条目**。init_tables 每次启动都会执行，用的是
+    // CREATE TABLE IF NOT EXISTS，所以老库启动即自动补齐；MIGRATIONS 只用于
+    // 无法幂等表达的变更（ALTER TABLE / 数据搬迁）。
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS agent_embeddings (
+            namespace TEXT NOT NULL,
+            ref_id TEXT NOT NULL,
+            model TEXT NOT NULL,
+            dim INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            vector BLOB NOT NULL,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (namespace, ref_id)
+        )",
+        [],
+    )
+    .map_err(|e: rusqlite::Error| format!("创建向量表失败: {}", e))?;
+
     // 索引
     for stmt in [
         "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)",
         "CREATE INDEX IF NOT EXISTS idx_tasks_is_habit ON tasks(is_habit)",
         "CREATE INDEX IF NOT EXISTS idx_moods_date ON moods(date DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_agent_embeddings_namespace ON agent_embeddings(namespace)",
     ] {
         conn.execute(stmt, [])
             .map_err(|e: rusqlite::Error| format!("创建索引失败: {}", e))?;

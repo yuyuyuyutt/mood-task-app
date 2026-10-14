@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "eval": "vitest run src/features/plan-generator/__tests__/evalSuite.test.ts --reporter=verbose",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "version:check": "node scripts/sync-version.mjs --check",

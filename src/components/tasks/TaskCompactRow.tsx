@@ -3,10 +3,25 @@
 // - 标题是第一视觉层（15px / 中等字重），元信息降为第二层（11px / 弱化色）；
 // - 完成按钮只在 hover 时"预告"完成态（描边变绿），点击后立刻变实心 + 打勾回弹，
 //   反馈发生在按下的一瞬间，不等任何异步操作；
-// - 优先级用一个色点表达，比 "P1" 文本更快被扫读，也几乎不占宽度。
+// - 优先级用一个色点表达，比 "P1" 文本更快被扫读，也几乎不占宽度；
+// - **状态徽标常驻在行上**（暂缓 / 进行中 / 完成，点击循环切换）：状态属于"一眼要看的东西"，
+//   不该埋在编辑表单里；表单里的状态下拉因此被移除，避免两处口径不一致；
+// - 详情（描述、来源、AI 模型）不再挤在行内，而是悬浮时由 `TaskHoverCard` 展示 ——
+//   行只留"标题 + 状态 + 时长/日期/标签"。
 import React from 'react';
-import { FaClock, FaCalendarAlt, FaPencilAlt, FaTrash, FaCheck, FaRedo } from 'react-icons/fa';
+import {
+  FaClock,
+  FaCalendarAlt,
+  FaPencilAlt,
+  FaTrash,
+  FaCheck,
+  FaRedo,
+  FaPause,
+  FaPlay,
+  FaRobot,
+} from 'react-icons/fa';
 import { Task } from '../../types';
+import { STATUS_LABEL, aiTagModel, aiTagOf, nextStatus } from './taskDetails';
 
 interface TaskCompactRowProps {
   task: Task;
@@ -16,6 +31,11 @@ interface TaskCompactRowProps {
   onDelete: (id: number) => void;
   onEdit: (task: Task) => void;
   onMarkHabitComplete: (taskId: number, completed: boolean) => void;
+  /** 行上点击状态徽标：按 暂缓 → 进行中 → 完成 循环 */
+  onStatusChange?: (task: Task, status: Task['status']) => void;
+  /** 悬浮 / 键盘聚焦时请求详情卡（由列表统一渲染，避免被容器裁剪） */
+  onHoverStart?: (task: Task, anchor: HTMLElement) => void;
+  onHoverEnd?: () => void;
 }
 
 function todayStr(): string {
@@ -37,6 +57,19 @@ const PRIORITY_DOT: Record<number, string> = {
   3: 'bg-ink-3/40',
 };
 
+/** 状态徽标的配色：暂缓=中性、进行中=品牌色、完成=成功色 */
+const STATUS_BADGE: Record<Task['status'], string> = {
+  pending: 'border-line bg-surface-2 text-ink-3 hover:text-ink',
+  in_progress: 'border-brand/25 bg-brand-soft text-brand-ink',
+  completed: 'border-ok/25 bg-ok-soft text-ok',
+};
+
+const STATUS_ICON: Record<Task['status'], React.ReactNode> = {
+  pending: <FaPause className="text-[8px]" />,
+  in_progress: <FaPlay className="text-[8px]" />,
+  completed: <FaCheck className="text-[8px]" />,
+};
+
 export const TaskCompactRow: React.FC<TaskCompactRowProps> = ({
   task,
   done: doneSignal = false,
@@ -44,6 +77,9 @@ export const TaskCompactRow: React.FC<TaskCompactRowProps> = ({
   onDelete,
   onEdit,
   onMarkHabitComplete,
+  onStatusChange,
+  onHoverStart,
+  onHoverEnd,
 }) => {
   const isHabit = !!task.is_habit;
   const habitDoneToday = isHabit
@@ -57,7 +93,9 @@ export const TaskCompactRow: React.FC<TaskCompactRowProps> = ({
     else onComplete(task);
   };
 
+  const aiTag = aiTagOf(task);
   const meta: React.ReactNode[] = [];
+
   if (isHabit) {
     meta.push(
       <span key="h" className="inline-flex items-center gap-1">
@@ -89,21 +127,20 @@ export const TaskCompactRow: React.FC<TaskCompactRowProps> = ({
       );
     }
   }
-  if (task.description && !done) {
-    meta.unshift(
-      <span key="desc" className="max-w-[45%] truncate">
-        {task.description}
-      </span>,
-    );
-  }
 
-  const tags = (task.tags ?? []).slice(0, 2);
+  // 标签只放"内容类"的（目标 / 类别）；AI 生成单独做成徽标，便于一眼识别来源
+  const plainTags = (task.tags ?? []).filter((t) => t !== aiTag).slice(0, 2);
+  const showStatusBadge = !isHabit && !!onStatusChange;
 
   return (
     <div
       className={`group relative flex items-center gap-3 px-3 py-2.5 transition-colors duration-150 sm:px-4 ${
         done ? '' : 'hover:bg-surface-2'
       }`}
+      onMouseEnter={(e) => onHoverStart?.(task, e.currentTarget)}
+      onMouseLeave={() => onHoverEnd?.()}
+      onFocusCapture={(e) => onHoverStart?.(task, e.currentTarget)}
+      onBlurCapture={() => onHoverEnd?.()}
     >
       {/* 完成按钮 */}
       <button
@@ -136,23 +173,40 @@ export const TaskCompactRow: React.FC<TaskCompactRowProps> = ({
           >
             {task.title}
           </span>
+          {aiTag && (
+            <span
+              title={aiTagModel(aiTag) ? `由 ${aiTagModel(aiTag)} 生成` : '由 AI 生成'}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-soft px-1.5 py-0.5 text-[10px] text-brand-ink"
+            >
+              <FaRobot className="text-[9px]" />
+              {aiTag}
+            </span>
+          )}
         </div>
 
-        {(meta.length > 0 || tags.length > 0) && (
-          <div className="mt-0.5 flex items-center gap-x-2.5 truncate text-[11px] text-ink-3">
-            {meta.map((m, i) => (
-              <React.Fragment key={i}>
-                {i > 0 && <span className="text-line-strong">·</span>}
-                {m}
-              </React.Fragment>
-            ))}
-            {tags.length > 0 && (
-              <span className="inline-flex items-center gap-1 truncate">
-                {tags.join(' / ')}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="mt-0.5 flex items-center gap-x-2.5 truncate text-[11px] text-ink-3">
+          {/* 状态徽标：常驻可见、点击循环切换（暂缓 → 进行中 → 完成） */}
+          {showStatusBadge && onStatusChange && (
+            <button
+              type="button"
+              onClick={() => onStatusChange(task, nextStatus(task.status))}
+              title={`状态：${STATUS_LABEL[task.status]}（点击切换为「${STATUS_LABEL[nextStatus(task.status)]}」）`}
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-[10px] font-medium transition-all duration-150 ease-snap active:scale-95 ${STATUS_BADGE[task.status]}`}
+            >
+              {STATUS_ICON[task.status]}
+              {STATUS_LABEL[task.status]}
+            </button>
+          )}
+          {meta.map((m, i) => (
+            <React.Fragment key={i}>
+              {(i > 0 || showStatusBadge) && <span className="text-line-strong">·</span>}
+              {m}
+            </React.Fragment>
+          ))}
+          {plainTags.length > 0 && (
+            <span className="inline-flex items-center gap-1 truncate">{plainTags.join(' / ')}</span>
+          )}
+        </div>
       </div>
 
       {/* 操作：hover 才出现 */}

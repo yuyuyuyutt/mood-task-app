@@ -21,6 +21,9 @@ import { useAppSettings, type BooleanSettingKey } from '../utils/appSettings';
 import { DataBackupCard } from '../features/backup/components/DataBackupCard';
 import { UserTypeCard } from '../features/plan-generator/components/UserTypeCard';
 import { NetworkingSettingsCard } from '../features/plan-generator/components/NetworkingSettingsCard';
+import { MemoryCard } from '../features/plan-generator/components/MemoryCard';
+import { EmbeddingSettingsCard } from '../features/plan-generator/components/EmbeddingSettingsCard';
+import { TracePanel } from '../features/plan-generator/components/TracePanel';
 
 /** 受支持的主题类插件（theme 能力）。同一时刻仅一个主题插件生效。 */
 const THEME_PLUGIN_IDS = ['dark-theme', 'wireframe'];
@@ -267,6 +270,9 @@ export const Settings: React.FC = () => {
 
       <UserTypeCard />
       <NetworkingSettingsCard />
+      <EmbeddingSettingsCard />
+      <MemoryCard />
+      <TracePanel />
       <DataBackupCard />
     </div>
   );

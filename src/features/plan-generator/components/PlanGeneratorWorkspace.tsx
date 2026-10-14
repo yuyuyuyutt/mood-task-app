@@ -48,12 +48,24 @@ import { WizardProgress } from './wizard/WizardProgress';
 import { ClarifyStep } from './wizard/ClarifyStep';
 import { ResourceStep } from './wizard/ResourceStep';
 import { PlanStep } from './wizard/PlanStep';
+import { PlanAdjustPanel } from './PlanAdjustPanel';
+import { decayMemories, markMemoriesUsed, recallForGoal, rememberPlan } from '../services/memory/memoryStore';
+import { useEmbeddingSettings } from '../hooks/useEmbeddingSettings';
+import { createVectorStore, type VectorStore } from '../services/rag/vectorStore';
+import { buildQueryText } from '../services/rag/embedding';
+import { buildRagRuntime } from '../services/rag/hybridRetriever';
+import { buildEvidence } from '../services/rag/evidence';
+import { AgentRunPanel } from './AgentRunPanel';
+import { runAgentPlan, type AgentPlanRun } from '../services/agent/agents/orchestrator';
+import type { ScoreContext } from '../services/resourceService';
 import type {
   Availability,
   ClarifyAnswers,
   ClarifyResult,
   GeneratedPlan,
+  HabitProfile,
   KeywordResult,
+  NetworkingSettings,
   PlanType,
   ResourceBundle,
   UserType,
@@ -127,6 +139,14 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
 
   const samples = useMemo(() => tasksToSamples(tasks), [tasks]);
   const autoAnalyzed = useRef(false);
+  /** 本次生成使用的画像（接受/拒绝时写入记忆，避免重复分析） */
+  const profileRef = useRef<HabitProfile | null>(null);
+  /** Agent 一键生成的结果报告（展示在计划页顶部） */
+  const [agentRun, setAgentRun] = useState<AgentPlanRun | null>(null);
+  const [agentBusy, setAgentBusy] = useState(false);
+  // 语义检索设置 + 向量存储（懒初始化：桌面端 SQLite / 浏览器 IndexedDB，二选一由运行时决定）
+  const { settings: embeddingSettings } = useEmbeddingSettings();
+  const [vectorStore] = useState<VectorStore>(() => createVectorStore());
 
   // 生命周期：订阅 AI 任务状态（UI 显示"AI 正在处理…"）
   useEffect(() => {
@@ -137,6 +157,11 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
       llmTasks.cancelAll();
       abortRef.current?.abort();
     };
+  }, []);
+
+  // 记忆维护：与插件数据的 purgeExpired 同款纪律 —— 进入功能时才做一次衰减
+  useEffect(() => {
+    void decayMemories().catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -196,6 +221,100 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
       /* 忽略统计失败 */
     }
   }, []);
+
+  // ---------------- Agent 模式（P5：一次多角色协作 run） ----------------
+
+  /**
+   * 一键走完 Clarifier → Researcher → Planner → Critic（含修正轮）。
+   * 与 3 步向导共享同一套底层能力，区别只在"谁来决定顺序"：
+   * 向导由用户逐步驱动，Agent 模式由确定性编排器驱动。
+   */
+  const runAgentMode = useCallback(async () => {
+    const goal = form.goal.trim();
+    if (goal.length < 2) {
+      setNotice('请先输入一个目标（至少 2 个字）');
+      return;
+    }
+    setNotice(null);
+    setStepError(null);
+    setAgentBusy(true);
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    try {
+      const profile = await analyze(samples, []);
+      profileRef.current = profile;
+      const userType: UserType = effectiveUserType ?? 'balanced';
+      const availability: Availability = { start: form.availStart, end: form.availEnd };
+      const memoryHits = await recallForGoal({
+        goal,
+        category: detectGoalCategory(goal),
+        limit: 2,
+      }).catch(() => []);
+      const ragReady = embeddingSettings.enabled && Boolean(embeddingSettings.model);
+
+      const run = await runAgentPlan({
+        input: {
+          goal,
+          days: form.days,
+          planType: form.planType,
+          userType,
+          preferences: {
+            style: form.style,
+            availability,
+            minutesPerDay: form.minutesPerDay > 0 ? form.minutesPerDay : undefined,
+            includeWeekend: form.includeWeekend,
+          },
+        },
+        config: llmConfig,
+        netSettings,
+        manualResources: library.resources,
+        scoreContext: await loadScoreContext(netSettings, availability.start),
+        profile,
+        memoryHits,
+        rag: ragReady ? { runtime: buildRagRuntime(llmConfig, embeddingSettings, vectorStore), goal } : undefined,
+        evidenceFetch: ragReady
+          ? {
+              enabled: embeddingSettings.contentFetch,
+              allowedDomains: embeddingSettings.allowedDomains,
+              maxResources: embeddingSettings.maxResources,
+              maxChunks: embeddingSettings.maxChunks,
+              timeoutMs: Math.max(embeddingSettings.timeoutMs, 8000),
+            }
+          : undefined,
+        signal: abortRef.current.signal,
+      });
+
+      setAgentRun(run);
+      setBundle(run.bundle);
+      setAnswers(Object.fromEntries(run.answers.map((a) => [a.id, a.answer])));
+      setDraft(run.compose.plan);
+      setFeedback('');
+      setRejecting(false);
+      setStage('plan');
+      setRevealed(0);
+      if (memoryHits.length > 0) {
+        void markMemoriesUsed(memoryHits.map((h) => h.note.id)).catch(() => undefined);
+      }
+      setNotice(
+        `Agent 模式完成：级别 ${run.level}，角色 ${run.roles.join(' → ') || '无'}；` +
+          `约束校验 ${run.critique.ok ? '通过' : `仍有 ${run.critique.violations.filter((v) => v.severity === 'error').length} 个问题`}`,
+      );
+    } catch (err) {
+      setStepError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAgentBusy(false);
+    }
+  }, [
+    form,
+    samples,
+    analyze,
+    effectiveUserType,
+    embeddingSettings,
+    llmConfig,
+    netSettings,
+    library.resources,
+    vectorStore,
+  ]);
 
   // ---------------- 阶段 1 ----------------
 
@@ -259,28 +378,22 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
       });
       setKeywords(kw);
 
-      const clicks = (await kvGet<Record<string, number>>(KV_RESOURCE_CLICKS)) ?? {};
-      const totalClicks = Object.values(clicks).reduce((s, n) => s + n, 0);
-      const sourcePreference: Record<string, number> = {};
-      for (const [src, n] of Object.entries(clicks)) {
-        if (totalClicks > 0) sourcePreference[src] = n / totalClicks;
-      }
-
       const joined = answerList.map((a) => a.answer).join(' ');
+      // 语义检索：仅在用户显式开启且配了模型时传入；其余情况走原来的纯关键词路径
+      const rag =
+        embeddingSettings.enabled && embeddingSettings.model
+          ? { goal: form.goal.trim(), runtime: buildRagRuntime(llmConfig, embeddingSettings, vectorStore) }
+          : undefined;
       const bundleResult = await collectResources({
         keywords: kw.keywords,
         settings: netSettings,
         manualResources: library.resources,
         signal,
-        scoreContext: {
-          preferredDifficulty: netSettings.preferredDifficulty,
-          preferVideo: /视频/.test(joined),
-          preferReading: /(读书|文档|看书)/.test(joined),
-          preferHandsOn: /(动手|练习|实践|项目)/.test(joined),
-          sourcePreference,
-        },
+        rag,
+        scoreContext: await loadScoreContext(netSettings, joined),
       });
       setBundle(bundleResult);
+      setAgentRun(null);
       setStage('resources');
     } catch (err) {
       setStepError(err instanceof Error ? err.message : String(err));
@@ -288,7 +401,19 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
     } finally {
       setBusy(false);
     }
-  }, [clarify, answers, form.goal, form.days, effectiveUserType, llmConfig, netSettings, library.resources]);
+  }, [
+    clarify,
+    answers,
+    form.goal,
+    form.days,
+    effectiveUserType,
+    llmConfig,
+    netSettings,
+    library.resources,
+    // 语义检索依赖：用户可能在设置页改了开关/模型，必须让回调拿到最新值
+    embeddingSettings,
+    vectorStore,
+  ]);
 
   // ---------------- 阶段 3 ----------------
 
@@ -302,11 +427,36 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
       const userType = effectiveUserType ?? 'balanced';
       const availability: Availability = { start: form.availStart, end: form.availEnd };
       const profile = await analyze(samples, []);
+      profileRef.current = profile;
+
+      const ragRuntime = buildRagRuntime(llmConfig, embeddingSettings, vectorStore);
+      // 正文证据（P4，可选）：只抓白名单内、打分最高的少量资源；
+      // 任何一步失败都会退化为"不注入证据"，不影响计划生成。
+      const evidence = await buildEvidence({
+        items: bundle.items,
+        query: buildQueryText(form.goal.trim(), keywords?.keywords ?? []),
+        runtime: ragRuntime,
+        fetch: {
+          enabled: embeddingSettings.enabled && embeddingSettings.contentFetch,
+          allowedDomains: embeddingSettings.allowedDomains,
+          maxResources: embeddingSettings.maxResources,
+          maxChunks: embeddingSettings.maxChunks,
+          timeoutMs: Math.max(embeddingSettings.timeoutMs, 8000),
+        },
+        signal: abortRef.current.signal,
+      });
       const answerList = (clarify?.questions ?? []).map((q) => ({
         id: q.id,
         question: q.question,
         answer: (answers[q.id] ?? '').trim() || '（未填写）',
       }));
+
+      // 记忆召回：只有结构匹配的少数几条会进 prompt（召不到就静默跳过）
+      const memoryHits = await recallForGoal({
+        goal: form.goal.trim(),
+        category: detectGoalCategory(form.goal.trim()),
+        limit: 2,
+      }).catch(() => []);
 
       const result = await composePlan({
         input: {
@@ -326,17 +476,27 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
         resources: bundle,
         config: llmConfig,
         signal: abortRef.current.signal,
+        memoryHits,
+        evidence,
       });
+
+      if (memoryHits.length > 0) {
+        void markMemoriesUsed(memoryHits.map((h) => h.note.id)).catch(() => undefined);
+      }
 
       setDraft(result.plan);
       setFeedback('');
       setRejecting(false);
       setStage('plan');
       setRevealed(0);
+      const memoryNote = memoryHits.length > 0 ? `，召回历史记忆 ${memoryHits.length} 条` : '';
+      const evidenceNote = evidence.enabled ? `，正文证据 ${evidence.chunks.length} 块` : '';
       setNotice(
         result.source === 'llm'
-          ? `已由本地模型生成计划（${result.plan.days.length} 天，引用资源 ${result.plan.resources?.length ?? 0} 条）`
-          : 'AI 未启用/失败，已用规则生成器生成计划（含策略与资源引用）',
+          ? `已由本地模型生成计划（${result.plan.days.length} 天，引用资源 ${
+              result.plan.resources?.length ?? 0
+            } 条${memoryNote}${evidenceNote}）`
+          : `AI 未启用/失败，已用规则生成器生成计划（含策略与资源引用${memoryNote}）`,
       );
     } catch (err) {
       setStepError(err instanceof Error ? err.message : String(err));
@@ -344,7 +504,20 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
     } finally {
       setBusy(false);
     }
-  }, [bundle, effectiveUserType, form, samples, analyze, clarify, answers, llmConfig]);
+  }, [
+    bundle,
+    effectiveUserType,
+    form,
+    samples,
+    analyze,
+    clarify,
+    answers,
+    llmConfig,
+    // 语义检索与正文证据依赖：设置页改动后必须让回调拿到最新值
+    embeddingSettings,
+    vectorStore,
+    keywords?.keywords,
+  ]);
 
   // 流式揭示
   useEffect(() => {
@@ -447,6 +620,12 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
     } else {
       setNotice('计划已保存在本机（未写入任务表）');
     }
+    // 情景记忆：接受即写一条"结论 + 证据"，供下次相似目标召回
+    await rememberPlan({
+      plan,
+      accepted: true,
+      completionRate: profileRef.current?.features.completionRate,
+    }).catch(() => undefined);
     setStage('form');
     setDraft(null);
     setShowSaved(true);
@@ -455,6 +634,8 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
   const doReject = async () => {
     if (!draft) return;
     await plansApi.rejectPlan(draft, feedback);
+    // 被拒绝的计划同样有价值：把拒绝原因记下来，避免下次重犯
+    await rememberPlan({ plan: draft, accepted: false, feedback }).catch(() => undefined);
     setStage('form');
     setDraft(null);
     setShowSaved(true);
@@ -802,13 +983,33 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
               )}
             </div>
 
-            <button
-              onClick={() => void startClarify()}
-              disabled={busy}
-              className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-semibold transition-colors disabled:opacity-60 text-sm"
-            >
-              {busy ? '正在准备…' : `开始 3 步生成（${form.days} 天）`}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => void startClarify()}
+                disabled={busy || agentBusy}
+                className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-semibold transition-colors disabled:opacity-60 text-sm"
+              >
+                {busy ? '正在准备…' : `开始 3 步生成（${form.days} 天）`}
+              </button>
+              <button
+                onClick={() => void runAgentMode()}
+                disabled={busy || agentBusy}
+                title="由确定性编排器一次跑完：澄清 → 检索 → 规划 → 校验（含修正轮）"
+                className="w-full sm:w-auto inline-flex items-center justify-center px-5 py-3 rounded-xl border border-violet-300 dark:border-violet-800 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 font-semibold transition-colors disabled:opacity-60 text-sm"
+              >
+                {agentBusy ? (
+                  <>
+                    <FaSyncAlt className="w-3.5 h-3.5 mr-2 animate-spin" />
+                    多角色协作中…
+                  </>
+                ) : (
+                  <>
+                    <FaRobot className="w-3.5 h-3.5 mr-2" />
+                    Agent 一键生成
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -853,6 +1054,9 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
 
       {/* ============ 第 3 步：计划 ============ */}
       {stage === 'plan' && draft && (
+        <>
+        {agentRun && <AgentRunPanel run={agentRun} onClose={() => setAgentRun(null)} />}
+        <PlanAdjustPanel plan={draft} config={llmConfig} onApplied={(next) => setDraft(next)} />
         <PlanStep
           plan={draft}
           revealed={revealed}
@@ -874,6 +1078,7 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
           onBack={() => setStage('resources')}
           onResourceOpen={(source) => void recordResourceClick(source)}
         />
+        </>
       )}
 
     </div>
@@ -882,10 +1087,34 @@ export const PlanGeneratorWorkspace: React.FC<Props> = ({ tasks, onTasksChanged 
 
 // ---------------- 小部件 ----------------
 
+/**
+ * 资源打分的上下文：读本地点击偏好 + 从澄清回答里推断内容形态偏好。
+ * 抽出来是因为"3 步向导"和"Agent 模式"两条路径都要用，避免两处漂移。
+ */
+async function loadScoreContext(
+  netSettings: NetworkingSettings,
+  joined: string,
+): Promise<ScoreContext> {
+  const clicks = (await kvGet<Record<string, number>>(KV_RESOURCE_CLICKS)) ?? {};
+  const totalClicks = Object.values(clicks).reduce((s, n) => s + n, 0);
+  const sourcePreference: Record<string, number> = {};
+  for (const [src, n] of Object.entries(clicks)) {
+    if (totalClicks > 0) sourcePreference[src] = n / totalClicks;
+  }
+  return {
+    preferredDifficulty: netSettings.preferredDifficulty,
+    preferVideo: /视频/.test(joined),
+    preferReading: /(读书|文档|看书)/.test(joined),
+    preferHandsOn: /(动手|练习|实践|项目)/.test(joined),
+    sourcePreference,
+  };
+}
+
 function kindLabel(kind: LlmManagerStats['lastKind']): string {
   if (kind === 'clarify') return '澄清问题';
   if (kind === 'keywords') return '检索关键词';
   if (kind === 'plan') return '计划生成';
+  if (kind === 'adjust') return '计划调整';
   return '空闲';
 }
 

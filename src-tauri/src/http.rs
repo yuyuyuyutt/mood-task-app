@@ -76,6 +76,67 @@ pub async fn fetch_json(
         .map_err(|e| format!("响应不是合法 JSON：{}", e))
 }
 
+/// 拉取**文本型**资源（正文抓取用）。
+///
+/// - `max_bytes`：下载后按字节截断，避免大页面同时拖垮内存与 IPC（截断可能切坏 UTF-8，
+///   所以统一走 `from_utf8_lossy` 而不是报错）；
+/// - 只接受文本类 content-type（HTML / 纯文本 / JSON / XML），图片视频直接拒绝；
+/// - 调用方（命令层）必须已经做过 SSRF 判断，本函数不再重复。
+pub async fn fetch_text(
+    url: &str,
+    timeout_ms: Option<u64>,
+    max_bytes: usize,
+) -> Result<(String, String), String> {
+    let mut req = client()
+        .get(url)
+        .header(
+            reqwest::header::ACCEPT,
+            "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
+        )
+        .header(reqwest::header::ACCEPT_LANGUAGE, "zh-CN,zh;q=0.9");
+
+    if let Some(ms) = timeout_ms {
+        req = req.timeout(Duration::from_millis(ms.max(1000)));
+    }
+
+    let res = req
+        .send()
+        .await
+        .map_err(|e| describe_reqwest_error(&e))?;
+
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("HTTP {}", status.as_u16()));
+    }
+
+    let content_type = res
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let lower = content_type.to_ascii_lowercase();
+    let is_text = lower.is_empty()
+        || lower.contains("text/")
+        || lower.contains("html")
+        || lower.contains("json")
+        || lower.contains("xml");
+    if !is_text {
+        return Err(format!("非文本内容（{}）", content_type));
+    }
+
+    let bytes = res
+        .bytes()
+        .await
+        .map_err(|e| describe_reqwest_error(&e))?;
+    let slice = if bytes.len() > max_bytes {
+        &bytes[..max_bytes]
+    } else {
+        &bytes[..]
+    };
+    Ok((content_type, String::from_utf8_lossy(slice).to_string()))
+}
+
 /// 把 reqwest 的错误翻译成用户能看懂的中文说明
 fn describe_reqwest_error(e: &reqwest::Error) -> String {
     if e.is_timeout() {

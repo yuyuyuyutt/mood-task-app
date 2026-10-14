@@ -151,6 +151,11 @@ export interface PlanTask {
   methodology?: string[];
   /** 引用的真实资源 id（对应 GeneratedPlan.resources） */
   resourceIds?: string[];
+  /**
+   * 引用的**证据片段** id（对应 GeneratedPlan.evidence，形如 `E1`）。
+   * 与 resourceIds 同一套纪律：宿主只接受出现在证据清单里的 id，其余一律丢弃并计数。
+   */
+  evidenceIds?: string[];
 }
 
 export interface PlanEvent {
@@ -197,6 +202,29 @@ export interface GeneratedPlan {
   resources?: ResourceItem[];
   /** 生成来源与降级说明 */
   generation?: PlanGenerationMeta;
+  /** 生成时召回的历史记忆 id（可追溯到具体 MemoryNote） */
+  memoryRefs?: string[];
+  /**
+   * 本次实际注入 prompt 的正文证据片段（截断后的摘要，**不含完整正文**）。
+   * 计划里每条 `evidenceIds` 都能在这里追到出处 —— 这是"引用可溯源"的落地形式。
+   */
+  evidence?: EvidenceRef[];
+}
+
+/** 正文证据片段（内容级 RAG 的最小可引用单位） */
+export interface EvidenceRef {
+  /** 对模型展示的短 id（E1、E2…），不是数据库主键 */
+  id: string;
+  /** 来源资源 id（对应 GeneratedPlan.resources） */
+  resourceId: string;
+  /** 该资源内的分块序号（从 0 开始） */
+  chunkIndex: number;
+  /** 证据摘录（≤ 240 字，够模型判断"讲的是什么"） */
+  snippet: string;
+  /** 与检索 query 的余弦相似度 */
+  score?: number;
+  /** 来源页面标题（有则带上，便于 UI 展示） */
+  title?: string;
 }
 
 // ================= 阶段 1：澄清问题 =================
@@ -222,6 +250,10 @@ export interface ClarifyResult {
   source: 'llm' | 'template';
   /** 降级原因（source=template 时给出） */
   fallbackReason?: string;
+  /** 本次使用的提示词版本 */
+  promptVersion?: string;
+  /** 对应的 run trace id */
+  traceId?: string;
 }
 
 export interface ClarificationAnswer {
@@ -248,6 +280,10 @@ export interface KeywordResult {
   keywords: SearchKeyword[];
   source: 'llm' | 'template';
   fallbackReason?: string;
+  /** 本次使用的提示词版本 */
+  promptVersion?: string;
+  /** 对应的 run trace id */
+  traceId?: string;
 }
 
 export type ResourceSourceId = 'bilibili' | 'searxng' | 'manual' | 'jump';
@@ -281,6 +317,13 @@ export interface ResourceItem {
     freshness: number;
     difficultyMatch: number;
     preference: number;
+    /**
+     * 第 5 维：语义相关度（余弦相似度）。
+     * 只作为**可解释维度**记录，不参与上面的 4 维加权 ——
+     * 余弦是 -1..1 的相似度、其余四维是 0..1 的启发式分，量纲不可比，
+     * 硬加权需要反复调参且不可解释；排序统一交给 RRF 融合（见 rag/hybridRetriever.ts）。
+     */
+    semantic?: number;
   };
 }
 
@@ -316,6 +359,22 @@ export interface ResourceBundle {
   /** 三层状态与降级说明 */
   layers: LayerStatus[];
   warnings: string[];
+  /** 语义检索（向量）运行情况：未开启/降级时为 undefined 或 enabled=false */
+  semantic?: SemanticSummary;
+}
+
+/** 语义检索的一次运行结果摘要（用于 UI 展示与降级说明） */
+export interface SemanticSummary {
+  enabled: boolean;
+  model: string | null;
+  /** 本次新写入向量的条数 */
+  embedded: number;
+  /** 命中内容哈希缓存、直接复用旧向量的条数 */
+  reused: number;
+  /** 命中语义召回并参与到融合排序的条数 */
+  matched: number;
+  /** 降级原因（未开启 / 端点不可用 / 维度不匹配等） */
+  degradedReason?: string;
 }
 
 /** 用户手动维护的资源库条目 */
@@ -331,6 +390,48 @@ export interface ManualResource {
   note?: string;
   createdAt: string;
 }
+
+/**
+ * 本地语义检索（向量）设置。
+ * 端点沿用「AI 增强」里配置的本地模型地址（Ollama），因此这里不重复配 baseUrl ——
+ * 只有"用哪个 embedding 模型"和"开不开"是需要用户决定的。
+ */
+export interface EmbeddingSettings {
+  enabled: boolean;
+  /** Ollama embedding 模型，如 nomic-embed-text / bge-m3 */
+  model: string;
+  /** 单次 embedding 请求超时（毫秒） */
+  timeoutMs: number;
+  /** 是否抓取资源正文（内容级 RAG；只抓打分最高的少量资源，默认关闭） */
+  contentFetch: boolean;
+  /** 允许抓取的域名白名单（**留空 = 不允许抓取任何站点**） */
+  allowedDomains: string[];
+  /** 单次最多抓取几个资源 */
+  maxResources: number;
+  /** 注入 prompt 的证据片段上限 */
+  maxChunks: number;
+}
+
+export const DEFAULT_EMBEDDING_SETTINGS: EmbeddingSettings = {
+  enabled: false,
+  model: 'nomic-embed-text',
+  timeoutMs: 15_000,
+  contentFetch: false,
+  // 默认留空：正文抓取是"会主动访问第三方站点"的动作，必须由用户显式加白名单
+  allowedDomains: [],
+  maxResources: 3,
+  maxChunks: 6,
+};
+
+/** 用户可一键加入白名单的常见学习站点（仅作候选，不默认启用） */
+export const SUGGESTED_CONTENT_DOMAINS = [
+  'bilibili.com',
+  'juejin.cn',
+  'zhihu.com',
+  'douban.com',
+  'github.com',
+  'developer.mozilla.org',
+];
 
 /** 资源与联网设置（默认全部关闭联网，仅跳转按钮） */
 export interface NetworkingSettings {
@@ -377,4 +478,61 @@ export interface PlanGenerationMeta {
   model?: string | null;
   /** 降级/安全调整说明 */
   warnings: string[];
+  /** 生成时使用的提示词版本（便于效果对比与回滚） */
+  promptVersion?: string;
+  /** 对应的 run trace id（可在轨迹面板里回看全过程） */
+  traceId?: string;
+  /** 本次召回的历史记忆条数 */
+  memoryUsed?: number;
+}
+
+// ================= Memory（三档记忆，本版本落地"情景记忆"） =================
+
+export type MemoryKind = 'episodic' | 'semantic';
+
+/** 结构化记忆条目：结论 + 证据引用 + 置信度，而不是囤积对话原文 */
+export interface MemoryNote {
+  id: string;
+  kind: MemoryKind;
+  /** 归一化主题键（同 subjectKey 的记忆会被合并而不是重复堆积） */
+  subjectKey: string;
+  /** 人类可读主题（如"学习 Python 基础"） */
+  subject: string;
+  /** 一句话结论 */
+  summary: string;
+  /** 证据引用（计划 id / 目标 / 时间），任何结论都可追溯 */
+  evidence: string[];
+  /** 置信度 0..1：命中次数越多越高，长期未命中会衰减 */
+  confidence: number;
+  /** 被召回次数 */
+  hitCount: number;
+  createdAt: string;
+  lastUsedAt: string;
+  /** 来源计划（便于回看原计划） */
+  sourcePlanId?: string;
+  category?: GoalCategory;
+  /** 量化事实（完成率、成败标签等），用于结构化过滤 */
+  stats?: {
+    accepted?: boolean;
+    completionRate?: number;
+    plannedDays?: number;
+    plannedItems?: number;
+    riskHits?: string[];
+    /** 学习工作区回流：累计会话数与实际/预估时长（用于校准下次计划的每日投入） */
+    studySessions?: number;
+    studyMinutes?: number;
+    predictedMinutes?: number;
+  };
+}
+
+/** 召回结果：记忆 + 结构化匹配分（分项可解释） */
+export interface MemoryHit {
+  note: MemoryNote;
+  score: number;
+  scoreDetail: {
+    category: number;
+    lexical: number;
+    confidence: number;
+    recency: number;
+  };
 }

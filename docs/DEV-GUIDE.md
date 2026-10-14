@@ -31,6 +31,7 @@ npm run test:watch     # vitest（监听模式）
 |---|---|---|
 | 任务 CRUD | ✅ localStorage（`mood-task:tasks-browser:v1`，见 `api/browserTaskStore.ts`） | ✅ SQLite `tasks` 表 |
 | 时段面板 | ✅ 落在 localStorage | ✅ 落在 SQLite `plugin_data` |
+| 学习工作区（会话 / 笔记 / 资源进度 / 辅导记录） | ✅ localStorage | ✅ 落在 SQLite `plugin_data`（命名空间 `__study`，随备份导出） |
 | 插件命名空间数据 | ✅ localStorage | ✅ SQLite |
 | 插件注册表 | ✅ 只有 localStorage | ✅ localStorage 镜像 + AppData 文件（文件为真源） |
 | 用户资料 / 头像 | ✅ localStorage（`mood-task:user-profile:v1` / `mood-task:user-avatar:v1`） | ✅ AppData（`user_profile.json` + `avatars/`） |
@@ -142,15 +143,15 @@ devtools 里清 localStorage 与 IndexedDB          ← 插件镜像 / 任务(�
 
 ## 6. 测试
 
-现状：`package.json` 有 `vitest` 依赖和脚本，但**没有 vitest 配置文件**，`vite.config.ts`
-里也没有 `test` 字段。这没问题——`vitest` 会自动复用 `vite.config.ts`（拿到 `@` 别名），
-且现有测试**不依赖 DOM**，跑在默认 node 环境。
+现状：`vitest.config.ts` 独立存在（`environment: 'node'`、`restoreMocks: true`、
+`include` 含 `*.test.ts` 与 `*.test.tsx`）。现有测试**不依赖 DOM**，跑在 node 环境。
 
 ```bash
-npm test                        # 8 个文件 / 91 个用例，约 1.4s
+npm test                        # 35 个文件 / 368 个用例，约 2s
+npm run eval                    # 离线评测（7 条用例 + 9 项指标 + 门禁）
 ```
 
-已有覆盖（全部在 `src/features/plan-generator/__tests__/`）：
+已有覆盖（主要在 `src/features/plan-generator/__tests__/`）：
 
 | 文件 | 覆盖内容 |
 |---|---|
@@ -162,17 +163,32 @@ npm test                        # 8 个文件 / 91 个用例，约 1.4s
 | `resourceService.test.ts` | 三层资源检索、打分、去重、降级 |
 | `planComposer.test.ts` | 计划合成、引用校验、回退 |
 | `llmTaskManager.test.ts` | 并发、去重、取消 |
+| `planQueue.test.ts` | 计划任务的逐条解锁（队列顺序 / 完成解锁 / 显式"进行中"优先） |
+| `evalHarness.test.ts` / `evalSuite.test.ts` | 离线评测器自身口径 / 整套门禁（`npm run eval` 入口） |
+| `streamChat.test.ts` | 流式传输：NDJSON / SSE、跨 chunk 半行、错误与取消 |
+| `features/study/__tests__/markdown.test.ts` | Markdown 子集解析（阅读模式的格式还原） |
+| `api/__tests__/studyStore.test.ts` | 学习工作区数据域：命名空间纪律、脏数据防御、汇总口径 |
+| `features/study/__tests__/*` | 番茄钟状态机、阅读白名单闸门、任务↔资源还原、间隔复习、会话回流记忆、**辅导员的检索与拒绝路径** |
 
 **实践约定**：新逻辑优先写成纯函数（放 `services/` 或 `utils/`），在 `__tests__/` 里加用例。
 测试配置在 `vitest.config.ts`（`environment: 'node'`，**不引 jsdom**）——依赖 DOM / IndexedDB /
 Tauri IPC 的模块请在用例内**自己注入桩对象**，参考：
 
 - `plugins/runtime/__tests__/dataStore.test.ts`：内存版 `localStorage`（配合 `vi.stubGlobal`）
+- `api/__tests__/studyStore.test.ts`：只实现 `list/get/put/remove` 四个方法的**内存版 `PluginDataStore`**
+  （`as unknown as PluginDataStore`），既快又不用碰 localStorage / IPC —— 新数据域用例照抄这个写法
 - `api/__tests__/index.test.ts`：`vi.hoisted` + `vi.mock('@tauri-apps/api/core')` 替掉 IPC；
   并用 `declareTauriRuntime()` / `declareBrowserRuntime()` 显式声明 `window.__TAURI_INTERNALS__`，
   分别覆盖"桌面 IPC"与"浏览器 localStorage 兜底"两条分支。**不声明就默认走浏览器分支**，mock 的 `invoke` 不会被调用——写 api 层用例时容易踩。
 
-要做真正的组件测试，需要另加 `jsdom` + `@testing-library/react` 并覆盖 `environment`。
+**组件测试的边界**：`vitest.config.ts` 已把 `*.test.tsx` 纳入收集范围，但只用于
+**服务端渲染冒烟**（`renderToStaticMarkup`，跑在 node 环境，不需要 jsdom）——
+例如 `components/tasks/__tests__/TaskCompactRow.render.test.tsx` 断言"状态徽标 / AI 生成徽标
+在给定数据下确实渲染出来"。这类用例只校验**渲染出的文案**，不能点击、不能查 DOM 事件。
+
+需要交互（点击 / 输入 / 悬浮 / 断言 DOM 状态）的组件测试，仍要另加 `jsdom` +
+`@testing-library/react` 并覆盖 `environment`。策略上仍建议优先把逻辑抽成纯函数：
+本项目绝大多数行为（任务队列、详情解析、状态循环、检索打分）都是这样测的。
 
 ## 7. 代码规范（当前约定，非强制工具）
 
@@ -201,6 +217,10 @@ Tauri IPC 的模块请在用例内**自己注入桩对象**，参考：
 | 插件安装报"要求核心版本 >= x" | `minCoreVersion` / `maxCoreVersion` 与 `CORE_VERSION`（`plugins/runtime/types.ts`）不匹配，`PluginHost.installPlugin()` 会**拒绝安装**。改清单或升核心版本 |
 | 任务"完成于"显示的日期像是创建日 | `completed_at` 为空时会回退显示 `created_at`。检查 `TaskList` 完成流程是否写入了 ISO 时间；取消完成会主动清空该列 |
 | 导入备份后"没看到变化" | 恢复是**合并**不是重建：任务按 `标题+创建时间` 去重、同 key 覆盖。已存在的重复任务不会新增，重新进入页面即可看到新增项 |
+| 学习工作区的数据没备份进去？ | 它在宿主保留命名空间 `__study`，`dumpAll()` 是全量导出，所以**一定在** `pluginData` 里；报告里的"学习工作区 N 条"就是按命名空间数出来的。反过来，**正文缓存与向量索引故意不进备份**（都是可重建的派生数据） |
+| 阅读模式一直说"抓不到" | 先确认 `embeddingSettings.contentFetch` 已开启、`allowedDomains` 含该域名（留空 = 不抓任何站点）；再确认不是内网/本机地址（Rust `content::is_public_host` 会拒） |
+| 阅读模式没有标题加粗等格式（显示"纯文本模式"） | 只有**桌面端经 Rust 代理**抓取才会返回 `markdown`（`content::html_to_markdown`）。浏览器直连分支、以及 7 天前的旧缓存都拿不到格式；点刷新按钮重新抓一次即可 |
+| 改了 `html_to_markdown` 但界面没变化 | 正文有 7 天缓存（`contentCache`）：要么点刷新（会命中缓存）、要么在设置页清除正文缓存后重新读取；单测可直接跑 `cargo test --lib content` |
 | 心情记录突然全空 | 心情真源是插件命名空间 `mood/entries`；`mood-diary` 插件被停用/卸载时统计页会刻意降级为空 |
 | 主题出现残留样式 | 卸载插件会撤销痕迹；若仍有残留，检查 `<head>` 里 `style[data-plugin-theme]`，宿主每次应用都会自愈清理 |
 | 头像不显示 | 文件必须在 `%APPDATA%\com.moodtask.app\avatars\`；且 `capabilities/default.json` 要包含 `fs:allow-appdata-read-recursive` 等权限 |

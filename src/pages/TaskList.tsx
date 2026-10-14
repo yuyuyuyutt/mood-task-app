@@ -4,14 +4,22 @@
 //   2) 顶部只留一行工具栏：视图切换（分段控件）+ 新建任务（唯一实心主按钮）；
 //   3) 统计读数只保留一处（筛选条右侧的完成率），不再重复罗列计数。
 // 完成交互：点击后立即播放"打勾→上移淡出"（260ms），落库与动画并行，不阻塞手感。
-import React, { useState, useEffect } from 'react';
+// 计划任务：一份计划在列表里**只占一条**（下一条待做），完成后才显示出下一条 ——
+//   理由见 services/planQueue.ts（计划本身是连续的，平铺会把结构表达错）。
+import React, { useState, useEffect, useMemo } from 'react';
 import { TaskCompactRow } from '@/components/tasks/TaskCompactRow';
 import { TaskForm } from '@/components/tasks/TaskForm';
 import { TaskFilter } from '@/components/tasks/TaskFilter';
+import { TaskHoverCard, useTaskHoverCard } from '@/components/tasks/TaskHoverCard';
 import { Task } from '../types';
 import { api } from '../api';
 import { PlanGeneratorWorkspace } from '../features/plan-generator/components/PlanGeneratorWorkspace';
-import { FaPlus, FaCheck, FaUndo, FaTrash } from 'react-icons/fa';
+import {
+  buildPlanQueue,
+  hiddenPlanTaskIds,
+  planQueueHints,
+} from '../features/plan-generator/services/planQueue';
+import { FaPlus, FaCheck, FaUndo, FaTrash, FaLayerGroup } from 'react-icons/fa';
 
 type ListView = 'active' | 'history';
 
@@ -31,6 +39,9 @@ export const TaskList: React.FC = () => {
   // 正在播放离场动画的任务（删除 / 完成）
   const [removingIds, setRemovingIds] = useState<ReadonlySet<number>>(new Set());
   const [doneIds, setDoneIds] = useState<ReadonlySet<number>>(new Set());
+
+  // 悬浮详情卡：状态统一放在列表层，保证同一时刻最多一张，且列表重排后不会残留
+  const hover = useTaskHoverCard(tasks);
 
   useEffect(() => {
     loadTasks();
@@ -128,6 +139,24 @@ export const TaskList: React.FC = () => {
     }
   };
 
+  /**
+   * 行上状态徽标的循环切换（暂缓 → 进行中 → 完成）。
+   * - 切到「完成」直接复用完成流程（含动画与 completed_at）；
+   * - 其余状态乐观更新（先改 UI 再落库），失败时回滚，避免网络慢时按钮"没反应"。
+   */
+  const handleStatusChange = (task: Task, status: Task['status']) => {
+    if (status === 'completed') {
+      handleCompleteTask(task);
+      return;
+    }
+    const previous = task.status;
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
+    void api.updateTask(task.id, { status }).catch((error) => {
+      console.error('Failed to change task status:', error);
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: previous } : t)));
+    });
+  };
+
   const handleMarkHabitComplete = async (taskId: number, completed: boolean) => {
     try {
       const task = tasks.find((t) => t.id === taskId);
@@ -168,7 +197,14 @@ export const TaskList: React.FC = () => {
         new Date(a.completed_at ?? a.created_at).getTime(),
     );
 
-  const activePool = tasks.filter((t) => !(t.status === 'completed' && !t.is_habit));
+  // 计划队列：每个计划只放行"下一条待做"，其余未完成条目暂不进入列表
+  const planQueue = useMemo(() => buildPlanQueue(tasks), [tasks]);
+  const hiddenPlanIds = useMemo(() => hiddenPlanTaskIds(planQueue), [planQueue]);
+  const planHints = useMemo(() => planQueueHints(planQueue), [planQueue]);
+
+  const activePool = tasks.filter(
+    (t) => !(t.status === 'completed' && !t.is_habit) && !hiddenPlanIds.has(t.id),
+  );
 
   const filteredTasks = activePool.filter((task) => {
     if (activeFilter === 'pending' && task.status !== 'pending') return false;
@@ -331,6 +367,7 @@ export const TaskList: React.FC = () => {
             <div className="divide-y divide-line">
               {sortedTasks.map((task, i) => {
                 const busy = doneIds.has(task.id) || removingIds.has(task.id);
+                const hint = planHints.get(task.id);
                 return (
                   <div
                     key={task.id}
@@ -353,7 +390,21 @@ export const TaskList: React.FC = () => {
                         setShowForm(true);
                       }}
                       onMarkHabitComplete={handleMarkHabitComplete}
+                      onStatusChange={handleStatusChange}
+                      onHoverStart={hover.onRowEnter}
+                      onHoverEnd={hover.onRowLeave}
                     />
+                    {/* 计划进度提示：只在该计划"后面还有条目"时出现 ——
+                        否则它只是在解释一件没发生的事（队列末尾、单条计划都不需要它）。 */}
+                    {hint && hint.remaining > 0 && (
+                      <p className="flex items-center gap-1.5 pr-3 pb-2.5 pl-11 text-[11px] text-ink-3">
+                        <FaLayerGroup className="text-[9px]" aria-hidden />
+                        <span className="truncate">
+                          计划「{hint.label}」第 {hint.position}/{hint.total} 条 · 完成这条后显示下一条（还剩{' '}
+                          {hint.remaining} 条）
+                        </span>
+                      </p>
+                    )}
                   </div>
                 );
               })}
@@ -419,6 +470,16 @@ export const TaskList: React.FC = () => {
       <div className="mt-10 border-t border-line pt-6">
         <PlanGeneratorWorkspace tasks={tasks} onTasksChanged={loadTasks} />
       </div>
+
+      {/* 悬浮详情卡（挂到 body，避免被列表容器裁剪） */}
+      {hover.hovered && (
+        <TaskHoverCard
+          task={hover.hovered.task}
+          anchor={hover.hovered.rect}
+          onCardEnter={hover.onCardEnter}
+          onCardLeave={hover.onCardLeave}
+        />
+      )}
 
       {showForm && (
         <TaskForm

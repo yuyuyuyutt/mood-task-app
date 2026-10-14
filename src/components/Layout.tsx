@@ -19,6 +19,7 @@ import {
   FaSpinner,
   FaMoon,
   FaClock,
+  FaBookOpen,
 } from 'react-icons/fa';
 import { UserProfileModalTauri } from './UserProfileModalTauri';
 import { useUserProfileTauri } from '../hooks/useUserProfileTauri';
@@ -60,6 +61,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   // 核心导航：primary = 高频主功能，secondary = 配置类
   const primaryNav: NavItem[] = [
     { path: '/tasks', label: '任务列表', icon: <FaTasks />, exact: true },
+    { path: '/study', label: '学习工作区', icon: <FaBookOpen />, exact: true },
     { path: '/schedule', label: '时段面板', icon: <FaClock />, exact: true },
     { path: '/stats', label: '数据统计', icon: <FaChartBar /> },
   ];

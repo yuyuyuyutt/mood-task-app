@@ -14,14 +14,17 @@ afterEach(() => {
 });
 
 function stubOllama(responseText: string, ok = true, status = 200): void {
-  globalThis.fetch = vi.fn(async () =>
-    ok
-      ? new Response(JSON.stringify({ response: responseText }), {
+  // 传输层已切到 /api/chat（system/user 分离 + JSON Schema）：桩必须返回 message.content
+  globalThis.fetch = vi.fn(async (input: unknown) => {
+    const url = String(input);
+    if (!url.endsWith('/api/chat')) throw new Error(`未预期的请求地址：${url}`);
+    return ok
+      ? new Response(JSON.stringify({ message: { role: 'assistant', content: responseText } }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
-      : new Response('boom', { status }),
-  ) as unknown as typeof fetch;
+      : new Response('boom', { status });
+  }) as unknown as typeof fetch;
 }
 
 describe('genericClarifyQuestions（模板兜底）', () => {

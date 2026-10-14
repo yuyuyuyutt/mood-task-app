@@ -2,12 +2,20 @@
 // 应用唯一入口：所有命令注册、插件挂载、数据库初始化都在这里。
 // 桌面端 main.rs 只是这一层的薄封装（保证桌面/移动端只有一份命令注册）。
 mod commands;
+mod content;
 mod database;
+mod embeddings;
 mod http;
 
 use commands::{
     create_task,
     delete_task,
+    embedding_clear,
+    embedding_delete,
+    embedding_hashes,
+    embedding_search,
+    embedding_stats,
+    embedding_upsert,
     get_tasks,
     patch_task,
     plugin_data_clear,
@@ -17,6 +25,7 @@ use commands::{
     plugin_data_get,
     plugin_data_list,
     plugin_data_put,
+    fetch_page_text,
     search_bilibili,
     search_searxng,
     AppState,
@@ -57,6 +66,13 @@ pub fn run() {
             plugin_data_dump,
             search_bilibili,
             search_searxng,
+            embedding_upsert,
+            embedding_hashes,
+            embedding_search,
+            embedding_delete,
+            embedding_clear,
+            embedding_stats,
+            fetch_page_text,
         ])
         .run(tauri::generate_context!())
         .expect("运行Tauri应用失败");

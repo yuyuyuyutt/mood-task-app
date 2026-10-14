@@ -1,8 +1,8 @@
 [package]
 name = "mood-task-app"
 version = "0.1.3"
-description = "A desktop app for task and mood tracking"
-authors = ["Your Name"]
+description = "Mood Task App · 本地优先的任务 / 心情 / 计划一体化桌面应用"
+authors = ["yuyuyuyu"]
 license = "MIT"
 edition = "2021"
 

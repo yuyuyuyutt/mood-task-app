@@ -1,5 +1,9 @@
 // src/commands.rs
 use crate::database::{CreateTask, DbPool, Task};
+use crate::embeddings::{
+    deserialize_vector, normalize, serialize_vector, EmbeddingHashRow, EmbeddingMatch,
+    EmbeddingNamespaceStat, EmbeddingUpsertItem, VectorRow,
+};
 use rusqlite::params;
 use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
@@ -585,5 +589,300 @@ pub async fn search_searxng(
     }
 
     Ok(SearxngSearchResponse { items })
+}
+
+// ==================== 本地向量索引（语义检索 RAG） ====================
+//
+// 设计要点（与前端的契约）：
+//   1) **向量不过 IPC**：前端只发一次 query 向量，这里做余弦 Top-K，
+//      只回传 ref_id + 分数 + 元信息；整表向量永远留在 SQLite。
+//   2) 写入时统一 L2 归一化，检索退化为点积。
+//   3) 按 (namespace, ref_id) 覆盖；namespace 隔离不同用途的索引（当前只有 'resource'）。
+//   4) model 参与过滤：换 embedding 模型等于换向量空间，旧向量不能与新 query 比较。
+
+/// 取某个 namespace 下已索引条目的内容哈希：前端据此只重算"内容变了的"那部分
+#[tauri::command]
+pub fn embedding_hashes(
+    state: State<AppState>,
+    namespace: String,
+    model: Option<String>,
+) -> Result<Vec<EmbeddingHashRow>, String> {
+    let conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+    let model = model.unwrap_or_default();
+    let mut stmt = conn
+        .prepare(
+            "SELECT ref_id, content_hash FROM agent_embeddings
+             WHERE namespace = ?1 AND (?2 = '' OR model = ?2)",
+        )
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+    let rows = stmt
+        .query_map(params![&namespace, &model], |r| {
+            Ok(EmbeddingHashRow {
+                ref_id: r.get(0)?,
+                content_hash: r.get(1)?,
+            })
+        })
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+    let collected: Result<Vec<_>, rusqlite::Error> = rows.collect();
+    collected.map_err(|e: rusqlite::Error| e.to_string())
+}
+
+/// 批量写入 / 更新向量（事务内完成，单条失败不留下半成品）
+#[tauri::command]
+pub fn embedding_upsert(
+    state: State<AppState>,
+    namespace: String,
+    items: Vec<EmbeddingUpsertItem>,
+) -> Result<u32, String> {
+    if items.is_empty() {
+        return Ok(0);
+    }
+    let mut conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+    let tx = conn.transaction().map_err(|e: rusqlite::Error| e.to_string())?;
+    let mut written = 0u32;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT INTO agent_embeddings
+                    (namespace, ref_id, model, dim, content_hash, vector, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))
+                 ON CONFLICT(namespace, ref_id) DO UPDATE SET
+                    model = excluded.model,
+                    dim = excluded.dim,
+                    content_hash = excluded.content_hash,
+                    vector = excluded.vector,
+                    updated_at = datetime('now')",
+            )
+            .map_err(|e: rusqlite::Error| e.to_string())?;
+        for item in items {
+            if item.vector.is_empty() {
+                continue;
+            }
+            let vector = normalize(&item.vector);
+            let dim = vector.len() as i64;
+            stmt.execute(params![
+                &namespace,
+                &item.ref_id,
+                &item.model,
+                dim,
+                &item.content_hash,
+                serialize_vector(&vector),
+            ])
+            .map_err(|e: rusqlite::Error| format!("写入向量失败：{}", e))?;
+            written += 1;
+        }
+    }
+    tx.commit().map_err(|e: rusqlite::Error| e.to_string())?;
+    Ok(written)
+}
+
+/// 余弦 Top-K 检索（query 会被归一化；维度不一致的历史向量得 0 分并被阈值过滤）
+#[tauri::command]
+pub fn embedding_search(
+    state: State<AppState>,
+    namespace: String,
+    query: Vec<f32>,
+    top_k: Option<u32>,
+    min_score: Option<f64>,
+    model: Option<String>,
+) -> Result<Vec<EmbeddingMatch>, String> {
+    if query.is_empty() {
+        return Err("query 向量为空".to_string());
+    }
+    let conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+    let model = model.unwrap_or_default();
+    let mut stmt = conn
+        .prepare(
+            "SELECT ref_id, vector, content_hash, model, updated_at FROM agent_embeddings
+             WHERE namespace = ?1 AND (?2 = '' OR model = ?2)",
+        )
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+    let rows = stmt
+        .query_map(params![&namespace, &model], |r| {
+            let blob: Vec<u8> = r.get(1)?;
+            Ok(VectorRow {
+                ref_id: r.get(0)?,
+                vector: deserialize_vector(&blob),
+                content_hash: r.get(2)?,
+                model: r.get(3)?,
+                updated_at: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
+            })
+        })
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+    let collected: Result<Vec<_>, rusqlite::Error> = rows.collect();
+    let rows = collected.map_err(|e: rusqlite::Error| e.to_string())?;
+
+    let normalized = normalize(&query);
+    let limit = top_k.unwrap_or(10).min(100) as usize;
+    let threshold = min_score.unwrap_or(0.0) as f32;
+    // 用全路径调用，避免与参数名 top_k 撞名
+    Ok(crate::embeddings::top_k(&normalized, rows, limit, threshold))
+}
+
+/// 删除若干条目（资源被删除 / 内容重建时使用）
+#[tauri::command]
+pub fn embedding_delete(
+    state: State<AppState>,
+    namespace: String,
+    ref_ids: Vec<String>,
+) -> Result<u32, String> {
+    if ref_ids.is_empty() {
+        return Ok(0);
+    }
+    let conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+    // 占位符按数量生成，值全部走绑定参数（不拼接用户输入）
+    let placeholders = std::iter::repeat("?")
+        .take(ref_ids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "DELETE FROM agent_embeddings WHERE namespace = ? AND ref_id IN ({})",
+        placeholders
+    );
+    let mut values: Vec<Value> = Vec::with_capacity(ref_ids.len() + 1);
+    values.push(Value::Text(namespace));
+    for id in ref_ids {
+        values.push(Value::Text(id));
+    }
+    let removed = conn
+        .execute(&sql, rusqlite::params_from_iter(values))
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+    Ok(removed as u32)
+}
+
+/// 清空索引（给定 namespace 或全部）
+#[tauri::command]
+pub fn embedding_clear(state: State<AppState>, namespace: Option<String>) -> Result<u32, String> {
+    let conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+    let removed = match namespace {
+        Some(ns) => conn.execute("DELETE FROM agent_embeddings WHERE namespace = ?1", params![ns]),
+        None => conn.execute("DELETE FROM agent_embeddings", []),
+    }
+    .map_err(|e: rusqlite::Error| e.to_string())?;
+    Ok(removed as u32)
+}
+
+/// 索引概况（设置页展示"已索引 N 条 / 维度"）
+#[tauri::command]
+pub fn embedding_stats(state: State<AppState>) -> Result<Vec<EmbeddingNamespaceStat>, String> {
+    let conn = state
+        .db_pool
+        .get()
+        .map_err(|e: r2d2::Error| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT namespace, model, dim, COUNT(*), COALESCE(MAX(updated_at), '')
+             FROM agent_embeddings GROUP BY namespace, model, dim ORDER BY namespace",
+        )
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(EmbeddingNamespaceStat {
+                namespace: r.get(0)?,
+                model: r.get(1)?,
+                dim: r.get(2)?,
+                count: r.get(3)?,
+                updated_at: r.get(4)?,
+            })
+        })
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+    let collected: Result<Vec<_>, rusqlite::Error> = rows.collect();
+    collected.map_err(|e: rusqlite::Error| e.to_string())
+}
+
+// ==================== 正文抓取（P4：内容级 RAG 增强） ====================
+//
+// 前端受同源策略约束，抓任意站点（豆瓣 / 掘金 / 个人博客）必然被 CORS 拦，
+// 因此与 B 站 / SearXNG 一样走 Rust 代理。这里额外做两件前端做不到的事：
+//   1) **SSRF 防护**：拒绝本机 / 内网 / 链路本地地址（前端白名单是产品策略，这里是硬边界）；
+//   2) **体积与清洗**：下载字节上限 + HTML → 纯文本，减少 IPC 传输量与 prompt 体积。
+
+#[derive(Debug, Serialize)]
+pub struct PageText {
+    pub url: String,
+    /// 从 <title> 提取（非 HTML 内容为空）
+    pub title: String,
+    /// 已清洗的正文（按 max_chars 截断）—— 服务检索与证据流水线，标记越少越好
+    pub text: String,
+    /// 同一份正文的 **Markdown 版本**（保留标题 / 加粗 / 列表 / 代码块 / 引用 / 链接）——
+    /// 只服务阅读模式。非 HTML 且非 markdown 的响应为空串。
+    pub markdown: String,
+    pub content_type: String,
+    /// 是否因为下载上限被截断
+    pub truncated: bool,
+}
+
+#[tauri::command]
+pub async fn fetch_page_text(
+    url: String,
+    timeout_ms: Option<u64>,
+    max_chars: Option<usize>,
+) -> Result<PageText, String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|e| format!("URL 不合法：{}", e))?;
+    let scheme = parsed.scheme();
+    if scheme != "http" && scheme != "https" {
+        return Err("只允许抓取 http(s) 链接".to_string());
+    }
+    let host = parsed.host_str().unwrap_or("").to_string();
+    if !crate::content::is_public_host(&host) {
+        return Err(format!("已拒绝抓取本机 / 内网地址：{}", host));
+    }
+
+    let (content_type, body) =
+        crate::http::fetch_text(&url, timeout_ms, crate::content::MAX_BYTES).await?;
+
+    let limit = max_chars
+        .unwrap_or(crate::content::MAX_TEXT_CHARS)
+        .clamp(200, crate::content::MAX_TEXT_CHARS);
+    let lower = content_type.to_ascii_lowercase();
+    let is_markup = lower.is_empty() || lower.contains("html") || lower.contains("xml");
+
+    let title = if is_markup {
+        crate::content::extract_title(&body)
+    } else {
+        String::new()
+    };
+    let text = if is_markup {
+        crate::content::html_to_text(&body, limit)
+    } else {
+        crate::content::truncate_chars(
+            &body.split_whitespace().collect::<Vec<_>>().join(" "),
+            limit,
+        )
+    };
+
+    // 阅读模式专用：HTML 走结构化转换；本来就是 markdown 的响应直接原样截断
+    //（GitHub README / 文档站的 .md 链接属于这一类，它们的"原网站格式"就是 markdown 本身）
+    let markdown = if is_markup {
+        crate::content::html_to_markdown(&body, limit)
+    } else if lower.contains("markdown") {
+        crate::content::truncate_chars(&body, limit)
+    } else {
+        String::new()
+    };
+
+    Ok(PageText {
+        url,
+        title,
+        text,
+        markdown,
+        content_type,
+        truncated: body.len() >= crate::content::MAX_BYTES,
+    })
 }
 

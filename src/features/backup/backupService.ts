@@ -2,22 +2,27 @@
 // 本地数据备份 / 恢复。
 // 数据分散在四处，本模块负责把它们聚合成**一个 JSON 文件**：
 //   1) SQLite `tasks` 表          —— api.getTasks / api.createTask
-//   2) 插件命名空间 `plugin_data` —— PluginDataStore.dumpAll / restoreRows（含心情、调度面板）
-//   3) IndexedDB `mood-task-planner` —— kv / plans / resources
+//   2) 插件命名空间 `plugin_data` —— PluginDataStore.dumpAll / restoreRows
+//      （含心情、调度面板 `__schedule`、**学习工作区 `__study`**：会话 / 笔记 / 资源进度 / 辅导记录）
+//   3) IndexedDB `mood-task-planner` —— kv / plans / resources / memory（Agent 记忆）
 //   4) AppData `user_profile.json` —— 仅 Tauri 环境
-// 说明：头像图片文件不纳入备份（体积大且可重新上传），恢复时保留本机现有头像。
+// 说明：头像图片文件不纳入备份（体积大且可重新上传），恢复时保留本机现有头像；
+//      正文临时缓存（contentCache）同样不备份 —— 它是可重新抓取的派生数据。
 import { api } from '../../api';
+import { STUDY_NS } from '../../api/studyStore';
 import type { PluginDataDumpRow } from '../../plugins/runtime/dataStore';
 import type { Task } from '../../types';
 import { loadAppSettings, saveAppSettings, type AppSettings } from '../../utils/appSettings';
 import { isTauriRuntime } from '../../utils/runtime';
 import {
+  dumpMemoryNotes,
   getAllKv,
   getAllManualResources,
   getAllPlans,
   kvSet,
   putManualResource,
   putPlan,
+  restoreMemoryNotes,
 } from '../plan-generator/db/plannerDB';
 
 export const BACKUP_FORMAT = 'mood-task-backup';
@@ -44,6 +49,8 @@ export interface BackupFile {
       kv: Array<{ key: string; value: unknown }>;
       plans: unknown[];
       resources: unknown[];
+      /** Agent 记忆条目（v3 新增；旧备份里没有这个字段，恢复时按空数组处理） */
+      memory: unknown[];
     };
   };
 }
@@ -61,8 +68,23 @@ export interface RestoreReport {
   plannerKv: number;
   plannerPlans: number;
   plannerResources: number;
+  plannerMemory: number;
+  /** 学习工作区的行数（会话 / 笔记 / 资源进度 / 辅导记录） */
+  studyRows: number;
   appSettingsRestored: boolean;
   userProfileRestored: boolean;
+}
+
+/**
+ * 备份里属于学习工作区的行数。
+ *
+ * 为什么只是"数一数"而不是单独导出：学习工作区落在宿主保留命名空间 `__study`，
+ * 而 `dumpAll()` 是**按命名空间全量导出**的，所以它天然已经在 `pluginData` 里了。
+ * 单独计数是为了让用户在界面上能核对"我的会话与笔记确实备进去了"，
+ * 而不是只能相信文档 —— 备份这种功能，"看得见"比"写在说明书里"重要。
+ */
+export function countStudyRows(rows: readonly PluginDataDumpRow[] | undefined): number {
+  return (rows ?? []).filter((row) => row.namespace === STUDY_NS).length;
 }
 
 async function readUserProfile(): Promise<UserProfileBackup | null> {
@@ -99,7 +121,7 @@ async function writeUserProfileName(name: string): Promise<boolean> {
 
 /** 汇总当前全部本地数据 */
 export async function createBackup(host: BackupHost): Promise<BackupFile> {
-  const [tasks, pluginData, kv, plans, resources, userProfile] = await Promise.all([
+  const [tasks, pluginData, kv, plans, resources, memory, userProfile] = await Promise.all([
     api.getTasks(),
     host.dumpPluginData().catch((err) => {
       console.warn('[backup] 导出插件数据失败:', err);
@@ -108,6 +130,7 @@ export async function createBackup(host: BackupHost): Promise<BackupFile> {
     getAllKv().catch(() => [] as Array<{ key: string; value: unknown }>),
     getAllPlans().catch(() => [] as unknown[]),
     getAllManualResources().catch(() => [] as unknown[]),
+    dumpMemoryNotes().catch(() => [] as unknown[]),
     readUserProfile(),
   ]);
 
@@ -120,7 +143,7 @@ export async function createBackup(host: BackupHost): Promise<BackupFile> {
       pluginData,
       appSettings: loadAppSettings(),
       userProfile,
-      planner: { kv, plans, resources },
+      planner: { kv, plans, resources, memory },
     },
   };
 }
@@ -150,7 +173,7 @@ export function parseBackup(text: string): { ok: true; backup: BackupFile } | { 
  * 恢复备份。策略（全部为"合并/覆盖"而非清库重建，避免误操作导致不可逆丢失）：
  * - 任务：按 `标题 + 创建时间` 去重，只追加缺失的；
  * - 插件命名空间数据：同 namespace/collection/key 覆盖；
- * - IndexedDB：kv 覆盖、plans/resources 按 id 覆盖；
+ * - IndexedDB：kv 覆盖、plans/resources/memory 按 id 覆盖；
  * - 应用设置：字段级合并（备份里有值才覆盖）。
  */
 export async function restoreBackup(backup: BackupFile, host: BackupHost): Promise<RestoreReport> {
@@ -161,6 +184,8 @@ export async function restoreBackup(backup: BackupFile, host: BackupHost): Promi
     plannerKv: 0,
     plannerPlans: 0,
     plannerResources: 0,
+    plannerMemory: 0,
+    studyRows: 0,
     appSettingsRestored: false,
     userProfileRestored: false,
   };
@@ -180,6 +205,8 @@ export async function restoreBackup(backup: BackupFile, host: BackupHost): Promi
   }
 
   report.pluginRows = await host.restorePluginData(backup.data.pluginData ?? []);
+  // 学习工作区的数据就在 pluginData 里，这里单独点清条数（用户能核对"笔记真的回来了"）
+  report.studyRows = countStudyRows(backup.data.pluginData);
 
   for (const row of backup.data.planner?.kv ?? []) {
     await kvSet(row.key, row.value);
@@ -193,6 +220,10 @@ export async function restoreBackup(backup: BackupFile, host: BackupHost): Promi
     await putManualResource(resource as Parameters<typeof putManualResource>[0]);
     report.plannerResources += 1;
   }
+  // 记忆：按 id 覆盖（旧版备份没有 memory 字段时自然跳过）
+  report.plannerMemory = await restoreMemoryNotes(
+    (backup.data.planner?.memory ?? []) as Parameters<typeof restoreMemoryNotes>[0],
+  );
 
   if (backup.data.appSettings) {
     saveAppSettings({ ...loadAppSettings(), ...backup.data.appSettings });
