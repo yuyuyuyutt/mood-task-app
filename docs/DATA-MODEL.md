@@ -10,13 +10,13 @@
 | 1 | **SQLite** | `app_local_data_dir/data.db` | `src/api/*.ts` → Rust 命令 | 任务、心情、插件命名空间数据、时段面板 | ❌ 不可用 |
 | 2 | **AppData 文件** | `AppData/plugins/installed.json`、`user_profile.json`、`avatars/*.jpg` | `plugins/runtime/storage.ts`、`hooks/useUserProfileTauri.ts` | 插件注册表、用户资料与头像 | ❌ 不可用（有降级/兜底） |
 | 3 | **localStorage** | 见 §4 | 插件宿主的同步镜像 + 数据降级通道 | 插件注册表镜像、主题偏好、插件数据、墓碑 | ✅ **主存储** |
-| 4 | **IndexedDB** | 库 `mood-task-planner` | `features/plan-generator/db/plannerDB.ts` | 习惯画像、计划、资源库、LLM 配置 | ✅ 完全一致 |
+| 4 | **IndexedDB** | 库 `sophotask-planner` | `features/plan-generator/db/plannerDB.ts` | 习惯画像、计划、资源库、LLM 配置 | ✅ 完全一致 |
 
 环境判定统一用 `'__TAURI_INTERNALS__' in window`（`storage.ts`、`dataStore.ts`、`taskMaterializer.ts`）。
 
-> **Windows 上的实际路径**（应用标识符 `com.moodtask.app`）：
-> - SQLite：`%LOCALAPPDATA%\com.moodtask.app\data.db`（`app_local_data_dir`）
-> - AppData 文件：`%APPDATA%\com.moodtask.app\...`（`BaseDirectory.AppData`，即 roaming）
+> **Windows 上的实际路径**（应用标识符 `com.sophotask.app`）：
+> - SQLite：`%LOCALAPPDATA%\com.sophotask.app\data.db`（`app_local_data_dir`）
+> - AppData 文件：`%APPDATA%\com.sophotask.app\...`（`BaseDirectory.AppData`，即 roaming）
 >
 > 注意这两个目录**不是同一个**。SQLite 在 Local，plugin-fs 写在 Roaming。
 
@@ -100,7 +100,7 @@
 
 ## 2. IndexedDB — 计划生成器（`features/plan-generator/db/plannerDB.ts`）
 
-数据库名 `mood-task-planner`，**版本 2**。三个 object store：
+数据库名 `sophotask-planner`，**版本 2**。三个 object store：
 
 | store | keyPath | 存什么 |
 |---|---|---|
@@ -176,13 +176,13 @@ restoreRows(rows) : Promise<number>         // 备份恢复：core 身份逐行 
 
 | 键 | 常量定义处 | 内容 |
 |---|---|---|
-| `mood-task:plugins:v1` | `plugins/runtime/types.ts` `STORAGE_KEY` | 插件注册表**同步镜像**（JSON：`{version:1, plugins:[{manifest, enabled, installedAt, source}]}`） |
-| `mood-task:theme:preference` | `THEME_PREF_KEY` | `'light'` \| `'dark'`，记录最近一次主题模式 |
-| `mood-task:plugin-data:v1:<ns>:<collection>:<key>` | `runtime/dataStore.ts` `DATA_PREFIX` | 浏览器模式下的插件数据（含时段面板） |
-| `mood-task:plugin-tombstones:v1` | `runtime/dataStore.ts` `TOMBSTONE_KEY` | 墓碑表 `Record<pluginId, Tombstone>` |
-| `mood-task:app-settings:v1` | `utils/appSettings.ts` `STORAGE_KEY` | 应用偏好（通知开关、提醒时间、语言），**已纳入备份** |
+| `sophotask:plugins:v1` | `plugins/runtime/types.ts` `STORAGE_KEY` | 插件注册表**同步镜像**（JSON：`{version:1, plugins:[{manifest, enabled, installedAt, source}]}`） |
+| `sophotask:theme:preference` | `THEME_PREF_KEY` | `'light'` \| `'dark'`，记录最近一次主题模式 |
+| `sophotask:plugin-data:v1:<ns>:<collection>:<key>` | `runtime/dataStore.ts` `DATA_PREFIX` | 浏览器模式下的插件数据（含时段面板） |
+| `sophotask:plugin-tombstones:v1` | `runtime/dataStore.ts` `TOMBSTONE_KEY` | 墓碑表 `Record<pluginId, Tombstone>` |
+| `sophotask:app-settings:v1` | `utils/appSettings.ts` `STORAGE_KEY` | 应用偏好（通知开关、提醒时间、语言），**已纳入备份** |
 
-**清空这些键 = 重置插件状态**（`mood-task:plugins:v1` 删掉后，下次启动只保留内置插件待安装状态）。
+**清空这些键 = 重置插件状态**（`sophotask:plugins:v1` 删掉后，下次启动只保留内置插件待安装状态）。
 插件注册表在两个环境都写 localStorage，Tauri 下额外写 AppData 文件，**文件是真源**，
 读到文件后会回写镜像。
 
@@ -205,7 +205,7 @@ restoreRows(rows) : Promise<number>         // 备份恢复：core 身份逐行 
    （数组类字段务必在边界 parse/stringify）
 
 **已有库文件的迁移**：`init_tables` 只建表不迁移。开发期最简单的做法是删掉
-`%LOCALAPPDATA%\com.moodtask.app\data.db` 让程序重建（**会丢数据**）；要保数据请手写
+`%LOCALAPPDATA%\com.sophotask.app\data.db` 让程序重建（**会丢数据**）；要保数据请手写
 `ALTER TABLE tasks ADD COLUMN ...`（SQLite 对已存在列没有 `IF NOT EXISTS`，需先查 `PRAGMA table_info(tasks)`）。
 
 ### JSON 字段为什么来回转字符串
@@ -220,6 +220,6 @@ SQLite 没有数组类型，所以 `tags` / `habit_completions` 以 JSON 字符�
 ### 导出/备份用户数据
 
 目前**没有**导出功能。要手工备份，需要同时复制：
-`%LOCALAPPDATA%\com.moodtask.app\data.db`（任务/心情/插件数据）、
-`%APPDATA%\com.moodtask.app\`（插件注册表、用户资料、头像）、
+`%LOCALAPPDATA%\com.sophotask.app\data.db`（任务/心情/插件数据）、
+`%APPDATA%\com.sophotask.app\`（插件注册表、用户资料、头像）、
 以及浏览器 profile 里的 IndexedDB（计划生成器）。这是本项目的明显短板，已记入 docs/TODO.md。

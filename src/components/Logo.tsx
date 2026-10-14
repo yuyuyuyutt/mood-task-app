@@ -11,7 +11,7 @@ interface LogoProps {
   title?: string;
 }
 
-export const Logo: React.FC<LogoProps> = ({ size = 32, className, title = '高山仰止' }) => {
+export const Logo: React.FC<LogoProps> = ({ size = 32, className, title = 'Sophotask · 高山仰止' }) => {
   // 同一页面可能出现多个实例，渐变 id 必须唯一，否则后一个会覆盖前一个
   const uid = useId().replace(/:/g, '');
   const page = `lp-${uid}`;

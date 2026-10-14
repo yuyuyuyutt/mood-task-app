@@ -29,12 +29,12 @@ npm run test:watch     # vitest（监听模式）
 
 | 能力 | `npm run dev`（浏览器） | `npm run tauri dev`（桌面） |
 |---|---|---|
-| 任务 CRUD | ✅ localStorage（`mood-task:tasks-browser:v1`，见 `api/browserTaskStore.ts`） | ✅ SQLite `tasks` 表 |
+| 任务 CRUD | ✅ localStorage（`sophotask:tasks-browser:v1`，见 `api/browserTaskStore.ts`） | ✅ SQLite `tasks` 表 |
 | 时段面板 | ✅ 落在 localStorage | ✅ 落在 SQLite `plugin_data` |
 | 学习工作区（会话 / 笔记 / 资源进度 / 辅导记录） | ✅ localStorage | ✅ 落在 SQLite `plugin_data`（命名空间 `__study`，随备份导出） |
 | 插件命名空间数据 | ✅ localStorage | ✅ SQLite |
 | 插件注册表 | ✅ 只有 localStorage | ✅ localStorage 镜像 + AppData 文件（文件为真源） |
-| 用户资料 / 头像 | ✅ localStorage（`mood-task:user-profile:v1` / `mood-task:user-avatar:v1`） | ✅ AppData（`user_profile.json` + `avatars/`） |
+| 用户资料 / 头像 | ✅ localStorage（`sophotask:user-profile:v1` / `sophotask:user-avatar:v1`） | ✅ AppData（`user_profile.json` + `avatars/`） |
 | 计划生成器（IndexedDB + Ollama） | ✅ | ✅ |
 | 资源检索第一层（B 站） | ⚠️ 直连必被 CORS 拦，降级到跳转按钮 | ✅ 经 Rust 侧代理 `search_bilibili` |
 | 资源检索第二层（SearXNG） | ⚠️ 直连被 CORS 拦，静默跳过 | ✅ 经 Rust 侧代理 `search_searxng` |
@@ -126,18 +126,18 @@ curl "http://localhost:8888/search?q=test&format=json&engines=360search"  # 单�
 |---|---|
 | 前端日志 | 桌面模式下右键窗口 → 检查元素（devtools）；或看启动终端 |
 | Rust 日志 | `println!` / `eprintln!` 输出到 `npm run tauri dev` 的终端 |
-| 数据库内容 | 用 [DB Browser for SQLite](https://sqlitebrowser.org/) 打开 `%LOCALAPPDATA%\com.moodtask.app\data.db` |
-| 插件注册表 | `%APPDATA%\com.moodtask.app\plugins\installed.json`；浏览器模式看 localStorage 的 `mood-task:plugins:v1` |
-| 插件数据 | SQLite 表 `plugin_data`；浏览器模式看 `mood-task:plugin-data:v1:*` |
-| 计划生成器数据 | devtools → Application → IndexedDB → `mood-task-planner` |
+| 数据库内容 | 用 [DB Browser for SQLite](https://sqlitebrowser.org/) 打开 `%LOCALAPPDATA%\com.sophotask.app\data.db` |
+| 插件注册表 | `%APPDATA%\com.sophotask.app\plugins\installed.json`；浏览器模式看 localStorage 的 `sophotask:plugins:v1` |
+| 插件数据 | SQLite 表 `plugin_data`；浏览器模式看 `sophotask:plugin-data:v1:*` |
+| 计划生成器数据 | devtools → Application → IndexedDB → `sophotask-planner` |
 | 主题为什么没生效 | devtools 看 `<html>` 上的 class / data 属性，以及 `<head>` 里的 `<style data-plugin-theme>` |
 
 **重置到干净状态**：
 
 ```text
-删 %LOCALAPPDATA%\com.moodtask.app\data.db      ← 任务 / 心情 / 插件数据（不可恢复）
-删 %APPDATA%\com.moodtask.app\plugins\           ← 插件注册表
-删 %APPDATA%\com.moodtask.app\user_profile.json  ← 用户资料
+删 %LOCALAPPDATA%\com.sophotask.app\data.db      ← 任务 / 心情 / 插件数据（不可恢复）
+删 %APPDATA%\com.sophotask.app\plugins\           ← 插件注册表
+删 %APPDATA%\com.sophotask.app\user_profile.json  ← 用户资料
 devtools 里清 localStorage 与 IndexedDB          ← 插件镜像 / 任务(浏览器模式) / 用户资料 / 计划生成器
 ```
 
@@ -223,7 +223,7 @@ Tauri IPC 的模块请在用例内**自己注入桩对象**，参考：
 | 改了 `html_to_markdown` 但界面没变化 | 正文有 7 天缓存（`contentCache`）：要么点刷新（会命中缓存）、要么在设置页清除正文缓存后重新读取；单测可直接跑 `cargo test --lib content` |
 | 心情记录突然全空 | 心情真源是插件命名空间 `mood/entries`；`mood-diary` 插件被停用/卸载时统计页会刻意降级为空 |
 | 主题出现残留样式 | 卸载插件会撤销痕迹；若仍有残留，检查 `<head>` 里 `style[data-plugin-theme]`，宿主每次应用都会自愈清理 |
-| 头像不显示 | 文件必须在 `%APPDATA%\com.moodtask.app\avatars\`；且 `capabilities/default.json` 要包含 `fs:allow-appdata-read-recursive` 等权限 |
+| 头像不显示 | 文件必须在 `%APPDATA%\com.sophotask.app\avatars\`；且 `capabilities/default.json` 要包含 `fs:allow-appdata-read-recursive` 等权限 |
 
 ## 9. 附：本机（Windows + 自动化助手）踩坑记录
 
@@ -244,8 +244,8 @@ Tauri IPC 的模块请在用例内**自己注入桩对象**，参考：
 // 用一个临时 .cjs 跑构建/测试，把输出写进日志文件，再用 Read 工具读日志
 const { spawnSync } = require('child_process');
 const r = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run'], {
-  cwd: 'D:/daima/mood-task-app', encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+  cwd: 'D:/daima/sophotask', encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
 });
-require('fs').writeFileSync('D:/daima/mood-task-app/.tmp.log',
+require('fs').writeFileSync('D:/daima/sophotask/.tmp.log',
   `EXIT ${r.status}\n${r.stdout}\n--STDERR--\n${r.stderr}`);
 ```

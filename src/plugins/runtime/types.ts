@@ -1,17 +1,18 @@
 // src/plugins/runtime/types.ts
 import type { PluginManifest } from '../parser/types';
+import { STORAGE_PREFIX } from '../../utils/storageKeys';
 
 /** 宿主核心版本：插件清单中的 minCoreVersion 与之比较 */
 export const CORE_VERSION = '1.0.0';
 
 /** 浏览器端持久化键（Tauri 环境下与 AppData 文件互为镜像） */
-export const STORAGE_KEY = 'mood-task:plugins:v1';
+export const STORAGE_KEY = `${STORAGE_PREFIX}plugins:v1`;
 
 /** Tauri AppData 中的插件注册表文件 */
 export const PLUGINS_FILE = 'plugins/installed.json';
 
 /** 主题偏好键：记录最近一次主题模式（供插件跟随系统偏好时参考） */
-export const THEME_PREF_KEY = 'mood-task:theme:preference';
+export const THEME_PREF_KEY = `${STORAGE_PREFIX}theme:preference`;
 
 export type PluginSource = 'builtin' | 'file' | 'url';
 

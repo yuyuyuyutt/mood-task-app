@@ -6,8 +6,9 @@
 // 这样两种环境渲染出的 Task 形状相同，组件无需分支。
 import type { Task } from '../types';
 import type { TaskPatch } from './index';
+import { STORAGE_PREFIX } from '../utils/storageKeys';
 
-const STORAGE_KEY = 'mood-task:tasks-browser:v1';
+const STORAGE_KEY = `${STORAGE_PREFIX}tasks-browser:v1`;
 
 interface PersistedState {
   version: 1;

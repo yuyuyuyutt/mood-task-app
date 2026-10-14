@@ -8,6 +8,7 @@
 // 因此所有 fs 调用都收敛到 profileStore，并在 isTauriRuntime() 分支内动态 import。
 import { useCallback, useEffect, useState } from 'react';
 import { isTauriRuntime } from '../utils/runtime';
+import { STORAGE_PREFIX } from '../utils/storageKeys';
 
 interface UserProfile {
   name: string;
@@ -30,9 +31,9 @@ const DEFAULT_USER_PROFILE: UserProfile = {
 const PROFILE_FILE = 'user_profile.json';
 const AVATAR_DIR = 'avatars';
 
-/** 浏览器兜底键名，沿用项目 `mood-task:<domain>:v1` 约定 */
-const LS_PROFILE_KEY = 'mood-task:user-profile:v1';
-const LS_AVATAR_KEY = 'mood-task:user-avatar:v1';
+/** 浏览器兜底键名，沿用项目 `<品牌前缀>:<domain>:v1` 约定（见 utils/storageKeys.ts） */
+const LS_PROFILE_KEY = `${STORAGE_PREFIX}user-profile:v1`;
+const LS_AVATAR_KEY = `${STORAGE_PREFIX}user-avatar:v1`;
 
 const MIME_BY_EXT: Record<string, string> = {
   jpg: 'image/jpeg',

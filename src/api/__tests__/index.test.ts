@@ -10,7 +10,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 
 import { api } from '../index';
 
-const TASKS_KEY = 'mood-task:tasks-browser:v1';
+const TASKS_KEY = 'sophotask:tasks-browser:v1';
 
 /** 声明运行在桌面端（Tauri WebView） */
 function declareTauriRuntime(): void {

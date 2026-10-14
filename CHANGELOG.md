@@ -3,10 +3,27 @@
 本项目遵循「版本号单一真源」原则：`src-tauri/tauri.conf.json` 是唯一版本真源，
 `package.json` 与 `src-tauri/Cargo.toml` 由 `npm run version:sync` 同步（CI 会校验一致性）。
 
-## [未发布] — Agent 增强层 P0–P6 · 学习工作区
+## [未发布] — 品牌更名 · Agent 增强层 P0–P6 · 学习工作区
 
 > 工作区当前状态，见 [`docs/AGENT-ARCHITECTURE.md`](docs/AGENT-ARCHITECTURE.md) 与
 > [`docs/STUDY-WORKSPACE.md`](docs/STUDY-WORKSPACE.md)。
+
+### 品牌更名：mood-task-app → Sophotask（含旧数据兼容）
+
+中文名「高山仰止」保留，英文名统一为 Sophotask（界面标题为 `Sophotask · 高山仰止`）。
+
+- **包与产物**：`package.json` / `Cargo.toml` / Tauri `productName` 改为 `sophotask`，
+  Rust crate 与 lib 名改为 `sophotask`，`main.rs` 调用随之更新。
+- **应用标识符**：`com.moodtask.app` → `com.sophotask.app`（决定安装包身份与 AppData 目录）。
+- **本地存储键**：`mood-task:*` → `sophotask:*`，IndexedDB `mood-task-planner` → `sophotask-planner`，
+  备份标识 `mood-task-backup` → `sophotask-backup`。
+- **旧数据兼容（关键）**：
+  - 启动时执行 `migrateLegacyLocalStorage()`，把 `mood-task:*` 一次性搬到 `sophotask:*`
+    （新键已存在则保留新键，只删旧键），因此枚举型读取点无需双前缀逻辑；
+  - 计划生成器首次创建新库时，会把旧库 `mood-task-planner` 的记录整体搬入后删除旧库；
+  - Rust 侧 `migrate.rs` 在初始化数据库**之前**把旧标识符目录的数据补进新目录
+    （只补缺失、绝不覆盖，失败不阻塞启动）；
+  - 备份解析同时接受旧的 `mood-task-backup` 标识，用户改名后仍能导入旧备份。
 
 ### Agent 增强层
 
@@ -102,4 +119,4 @@
 
 ---
 
-[未发布]: https://github.com/yuyuyuyutt/mood-task-app/compare/v0.1.3...HEAD
+[未发布]: https://github.com/yuyuyuyutt/sophotask/compare/v0.1.3...HEAD

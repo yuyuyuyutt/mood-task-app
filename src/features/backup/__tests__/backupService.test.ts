@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BACKUP_FORMAT,
   BACKUP_VERSION,
+  LEGACY_BACKUP_FORMAT,
   backupFileName,
   countStudyRows,
   createBackup,
@@ -60,6 +61,17 @@ describe('parseBackup', () => {
     const result = parseBackup(JSON.stringify({ format: BACKUP_FORMAT, version: 1 }));
     expect(result.ok).toBe(false);
   });
+
+  it('接受更名前（mood-task-backup）导出的旧备份，并归一化为当前标识', () => {
+    const result = parseBackup(validBackup({ format: LEGACY_BACKUP_FORMAT }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.backup.format).toBe(BACKUP_FORMAT);
+  });
+
+  it('仍然拒绝既不是新标识也不是旧标识的文件', () => {
+    const result = parseBackup(validBackup({ format: 'other-app-backup' }));
+    expect(result.ok).toBe(false);
+  });
 });
 
 describe('createBackup', () => {
@@ -114,6 +126,6 @@ describe('学习工作区的备份口径', () => {
 
 describe('backupFileName', () => {
   it('按日期生成文件名', () => {
-    expect(backupFileName(new Date(2026, 8, 14))).toBe('mood-task-backup-2026-09-14.json');
+    expect(backupFileName(new Date(2026, 8, 14))).toBe('sophotask-backup-2026-09-14.json');
   });
 });

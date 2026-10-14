@@ -1,7 +1,7 @@
 // src/features/plan-generator/db/plannerDB.ts
 // 本地 IndexedDB 持久化层（隐私：数据只存在本机浏览器 IndexedDB，绝不上传）。
 //
-// 数据库结构（mood-task-planner，版本演进只允许"追加"）：
+// 数据库结构（sophotask-planner，版本演进只允许"追加"）：
 // - store 'kv'        (keyPath: 'key')  —— 个人画像、偏好、反馈、Agent trace 等键值数据
 // - store 'plans'     (keyPath: 'id')   —— 生成的计划（任务列表/事件时段表）
 // - store 'resources' (keyPath: 'id')   —— 用户手动维护的资源库
@@ -17,7 +17,13 @@
 //   3) 在 kvSet/putPlan 写盘前加密 value，在读取后解密（保持本文件 API 不变）。
 import type { GeneratedPlan, ManualResource, MemoryNote } from '../types';
 
-export const PLANNER_DB_NAME = 'mood-task-planner';
+export const PLANNER_DB_NAME = 'sophotask-planner';
+/**
+ * 更名前（mood-task-app 时期）的库名。
+ * 新库**首次创建**时会把旧库的所有记录整体搬过来，搬迁成功后删除旧库
+ * （见 open()）。因此更名不会让用户的计划 / 画像 / 记忆凭空消失。
+ */
+export const LEGACY_PLANNER_DB_NAME = 'mood-task-planner';
 /**
  * v3：新增 memory store（Agent 记忆）。
  * v4：新增 embeddings store（浏览器端向量索引；桌面端存 SQLite，见 src-tauri/src/embeddings.rs）。
@@ -44,15 +50,90 @@ export const KV_EMBEDDING = 'embeddingSettings';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+/** 打开更名前的旧库；库不存在（或已是空壳）时返回 null，并顺手清掉探测时产生的空库 */
+function openLegacyDb(): Promise<IDBDatabase | null> {
+  return new Promise((resolve) => {
+    let req: IDBOpenDBRequest;
+    try {
+      // 不带版本号。库不存在时浏览器会建一个空库，下面的 objectStoreNames 判定会把它清掉
+      req = indexedDB.open(LEGACY_PLANNER_DB_NAME);
+    } catch {
+      resolve(null);
+      return;
+    }
+    req.onsuccess = () => {
+      const db = req.result;
+      if (db.objectStoreNames.length === 0) {
+        db.close();
+        indexedDB.deleteDatabase(LEGACY_PLANNER_DB_NAME);
+        resolve(null);
+        return;
+      }
+      resolve(db);
+    };
+    req.onerror = () => resolve(null);
+    req.onblocked = () => resolve(null);
+  });
+}
+
+function readAllFrom(db: IDBDatabase, storeName: string): Promise<unknown[]> {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(storeName, 'readonly');
+    const req = t.objectStore(storeName).getAll();
+    req.onsuccess = () => resolve(req.result as unknown[]);
+    req.onerror = () => reject(req.error ?? new Error('读取更名前的数据库失败'));
+  });
+}
+
+function writeAllTo(db: IDBDatabase, storeName: string, rows: unknown[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(storeName, 'readwrite');
+    const store = t.objectStore(storeName);
+    for (const row of rows) store.put(row);
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error ?? new Error('写入数据库失败'));
+    t.onabort = () => reject(t.error ?? new Error('写入数据库被中止'));
+  });
+}
+
+/** 把更名前旧库的记录整体搬进新库（逐 store 复制，空的 store 跳过） */
+async function importLegacyPlannerDb(db: IDBDatabase): Promise<void> {
+  const legacy = await openLegacyDb();
+  if (!legacy) return;
+
+  let copied = 0;
+  try {
+    for (const storeName of Array.from(legacy.objectStoreNames)) {
+      if (!db.objectStoreNames.contains(storeName)) continue;
+      const rows = await readAllFrom(legacy, storeName);
+      if (rows.length === 0) continue;
+      await writeAllTo(db, storeName, rows);
+      copied += rows.length;
+    }
+  } finally {
+    legacy.close();
+  }
+
+  if (copied > 0) {
+    console.info(`[planner-db] 已从更名前的数据库迁移 ${copied} 条记录`);
+  }
+  // 数据已在新库里，旧库留着只会占空间、也会让下次启动重复搬迁
+  indexedDB.deleteDatabase(LEGACY_PLANNER_DB_NAME);
+}
+
 function open(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
+  // 首次创建（oldVersion === 0）时记下来：稍后尝试从更名前的旧库导入
+  let createdFresh = false;
+
+  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
       reject(new Error('当前环境不支持 IndexedDB（请使用现代浏览器或 Tauri WebView）'));
       return;
     }
     const req = indexedDB.open(PLANNER_DB_NAME, PLANNER_DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
+      if (event.oldVersion === 0) createdFresh = true;
       const db = req.result;
       if (!db.objectStoreNames.contains('kv')) {
         db.createObjectStore('kv', { keyPath: 'key' });
@@ -75,7 +156,18 @@ function open(): Promise<IDBDatabase> {
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error('打开 IndexedDB 失败'));
+  }).then(async (db) => {
+    if (createdFresh) {
+      try {
+        await importLegacyPlannerDb(db);
+      } catch (err) {
+        // 迁移失败不能让新库不可用：最差结果是用户看到空数据（等同于不迁移）
+        console.warn('[planner-db] 更名前的数据库迁移失败，已忽略:', err);
+      }
+    }
+    return db;
   });
+
   // 失败后允许下次重试
   dbPromise.catch(() => {
     dbPromise = null;

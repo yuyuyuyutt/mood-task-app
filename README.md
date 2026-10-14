@@ -1,15 +1,15 @@
 <div align="center">
 
-<img src="public/logo.svg" width="88" height="88" alt="mood-task-app logo" />
+<img src="public/logo.svg" width="88" height="88" alt="sophotask logo" />
 
-# 高山仰止 · mood-task-app
+# Sophotask · 高山仰止
 
 **本地优先的桌面端「任务 · 心情 · 计划」一体化效率应用**
 
 任务与习惯打卡 · 心情日记 · 时段面板 · 数据统计
 外加**声明式插件宿主**、**个性化计划生成器（含 Agent 增强层）**，以及把计划真正落到执行的**学习工作区**。
 
-[![CI](https://github.com/yuyuyuyutt/mood-task-app/actions/workflows/ci.yml/badge.svg)](https://github.com/yuyuyuyutt/mood-task-app/actions/workflows/ci.yml)
+[![CI](https://github.com/yuyuyuyutt/sophotask/actions/workflows/ci.yml/badge.svg)](https://github.com/yuyuyuyutt/sophotask/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.3-informational.svg)](CHANGELOG.md)
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8DB.svg)](https://tauri.app/)
@@ -114,7 +114,7 @@ npm test             # 单元测试（vitest run）
 ## 顶层结构
 
 ```
-mood-task-app/
+sophotask/
 ├─ src/                    # 前端源码（React + TS），详见 docs/ARCHITECTURE.md
 │  ├─ api/                 # 数据访问层：任务 CRUD（唯一碰 SQLite 的地方）/ 时段面板
 │  ├─ components/          # 通用组件（布局、任务、心情、插件）
@@ -124,7 +124,7 @@ mood-task-app/
 │  ├─ hooks/ · utils/ · types/
 ├─ src-tauri/              # Rust 后端：SQLite、向量检索、正文代理、命令、权限
 │  ├─ src/lib.rs           # ← 应用唯一入口（模块、插件挂载、全部命令注册、run()）
-│  ├─ src/main.rs          # 4 行薄封装：调用 mood_task_app::run()
+│  ├─ src/main.rs          # 4 行薄封装：调用 sophotask::run()
 │  ├─ src/commands.rs      # 全部 #[tauri::command]（任务 / 插件数据 / 检索 / 向量 / 正文抓取）
 │  ├─ src/database.rs      # 连接池 + 建表 + user_version 顺序迁移 + 行映射
 │  ├─ src/embeddings.rs    # 向量内核：f32 BLOB 序列化、归一化、余弦 Top-K（纯函数 + 单测）
@@ -190,12 +190,12 @@ mood-task-app/
 |---|---|---|
 | 类型检查 | `npm run typecheck` | ✅ 0 error |
 | Lint | `npm run lint` | ✅ 0 error / 24 warning（存量 `any` 与 hooks 依赖告警） |
-| 单元测试 | `npm test` | ✅ 37 个文件 / 384 个用例全部通过，约 3s |
+| 单元测试 | `npm test` | ✅ 38 个文件 / 394 个用例全部通过，约 2s |
 | 离线评测 | `npm run eval` | ✅ 7 条脚本化用例全通过，9 项指标全部达门禁 |
 | 生产构建 | `npm run build` | ✅ `tsc && vite build` 通过 |
 | 版本号一致性 | `npm run version:check` | ✅ 三处均为 0.1.3 |
 | Rust | `cd src-tauri && cargo check` | ✅ 0 error / 0 warning |
-| Rust 单测 | `cd src-tauri && cargo test --lib` | ✅ 20 个用例通过（向量 + 正文清洗 / Markdown 转换 / SSRF） |
+| Rust 单测 | `cd src-tauri && cargo test --lib` | ✅ 23 个用例通过（向量 + 正文清洗 / Markdown 转换 / SSRF + 更名目录迁移） |
 | CI | `.github/workflows/ci.yml` | 上述检查在 push / PR 上自动执行 |
 
 2026-09-28 起新增的 257 个用例集中在 Agent 增强层的**安全边界与降级路径**：

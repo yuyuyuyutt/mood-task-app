@@ -1,13 +1,13 @@
 [package]
-name = "mood-task-app"
+name = "sophotask"
 version = "0.1.3"
-description = "Mood Task App · 本地优先的任务 / 心情 / 计划一体化桌面应用"
+description = "Sophotask · 本地优先的任务 / 心情 / 计划一体化桌面应用"
 authors = ["yuyuyuyu"]
 license = "MIT"
 edition = "2021"
 
 [lib]
-name = "mood_task_app"
+name = "sophotask"
 path = "src/lib.rs"
 
 [dependencies]

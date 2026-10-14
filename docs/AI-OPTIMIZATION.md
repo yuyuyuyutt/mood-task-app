@@ -1,6 +1,6 @@
 # AI 能力优化方向 — RAG / Tool Calling / Prompt Engineering
 
-> 针对 mood-task-app 现有 AI 模块（plan-generator）的盘点与优化路线。
+> 针对 sophotask 现有 AI 模块（plan-generator）的盘点与优化路线。
 > 原则：**顺着已有架构扩展，不推翻**；每条优化都标注落点文件与预估工作量。
 
 ---

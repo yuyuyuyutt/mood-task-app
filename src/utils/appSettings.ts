@@ -3,8 +3,9 @@
 // 注意：目前这些开关只落地"偏好"本身，尚未接入系统通知/国际化运行时——
 // 设置页会明确标注，避免用户误以为已生效。
 import { useCallback, useState } from 'react';
+import { STORAGE_PREFIX } from './storageKeys';
 
-const STORAGE_KEY = 'mood-task:app-settings:v1';
+const STORAGE_KEY = `${STORAGE_PREFIX}app-settings:v1`;
 
 export interface AppSettings {
   notifications: boolean;

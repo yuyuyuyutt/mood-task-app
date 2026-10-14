@@ -1,6 +1,6 @@
 # Agent 化改造总纲 —— RAG / Skill / Multi-Agent / Memory
 
-> **这份文档的唯一用途**：把 mood-task-app 讲成一个"Agent 开发方向"的简历项目，并作为面试追问的答题底稿。
+> **这份文档的唯一用途**：把 sophotask 讲成一个"Agent 开发方向"的简历项目，并作为面试追问的答题底稿。
 > 维护纪律：**只写仓库里真实存在的实现**。每条设计都必须能在代码里指到文件；
 > 未落地的条目留在「实施计划」里，落地当天补上"证据锚点"再上简历。
 >
@@ -65,7 +65,7 @@
 | 启发式 4 维打分（可信度 .30 / 时效 .25 / 难度 .25 / 偏好 .20）+ URL/标题去重 + 分类型截断 | `services/resourceService.ts:194`、`collectResources` | **混合检索的关键词/规则侧**，向量召回是叠加而非替换 |
 | 引用白名单防编造（丢弃不在资源列表里的 `resourceIds`） | `services/planComposer.ts`（`droppedCitations`） | 升级为 **chunk 级引用可溯源**，是 RAG 的诚信基线 |
 | 三层检索编排（B 站 / SearXNG / 平台跳转）+ Rust 侧代理绕 CORS | `services/resources/*`、`src-tauri/src/commands.rs:422/513` | RAG 的**外部数据入口**已通 |
-| 本地持久化：IndexedDB `mood-task-planner`（kv / plans / resources）+ SQLite `plugin_data` | `db/plannerDB.ts`、`src-tauri/src/database.rs:84` | Memory 与向量索引的**双后端落盘**照抄即可 |
+| 本地持久化：IndexedDB `sophotask-planner`（kv / plans / resources）+ SQLite `plugin_data` | `db/plannerDB.ts`、`src-tauri/src/database.rs:84` | Memory 与向量索引的**双后端落盘**照抄即可 |
 | 声明式插件安全模型：能力声明 + namespace 权限门 + 沙箱来源校验 | `src/plugins/runtime/dataStore.ts`、`sandbox.ts` | Skill 权限门的**架构原型**，叙事上前后一致 |
 | 双运行时抽象 `isTauriRuntime()` + `PRAGMA user_version` 迁移机制 | `src/utils/runtime.ts`、`database.rs:119` | 向量表可以走"迁移追加"，老用户库不用重建 |
 | 测试与 CI：vitest 12 文件 / 120 用例、ESLint 9、GitHub Actions、版本单一真源 | `vitest.config.ts`、`.github/workflows/ci.yml` | Agent 代码同样进 CI，评测脚本可挂成 CI 任务 |

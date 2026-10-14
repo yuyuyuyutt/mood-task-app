@@ -6,6 +6,7 @@ mod content;
 mod database;
 mod embeddings;
 mod http;
+mod migrate;
 
 use commands::{
     create_task,
@@ -39,6 +40,9 @@ pub fn run() {
         // 外链跳转（资源库 / 计划生成器的 B 站等资源）依赖该插件，前端走 openExternal()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // 品牌更名兼容：先把旧标识符目录（com.moodtask.app）下的数据搬到新目录，
+            // 必须在初始化数据库之前执行，否则会先建出一个空的 data.db。
+            migrate::migrate_legacy_app_dirs(app.handle());
             // 在 setup 阶段初始化数据库
             match database::init_db(app.handle()) {
                 Ok(pool) => {

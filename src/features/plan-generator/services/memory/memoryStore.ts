@@ -1,7 +1,7 @@
 // src/features/plan-generator/services/memory/memoryStore.ts
 // 记忆的**持久化与对外门面**（IO 层；纯逻辑在同目录 memoryWriter / memoryRetriever）。
 //
-// 存放位置：IndexedDB `mood-task-planner` 的 `memory` store（v3 迁移追加）。
+// 存放位置：IndexedDB `sophotask-planner` 的 `memory` store（v3 迁移追加）。
 // 之所以不新建一个 SQLite 表：记忆只在计划生成器里使用，且必须在**浏览器开发模式**下同样可用，
 // 与 plans / resources 保持一致最省事，也天然被"全量数据导出"覆盖。
 //

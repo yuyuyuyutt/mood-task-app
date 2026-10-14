@@ -184,7 +184,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
           <Logo size={30} className="shrink-0 drop-shadow-sm" />
           <span className="truncate text-[15px] font-semibold tracking-tight text-ink">
-            高山仰止
+            Sophotask · 高山仰止
           </span>
         </div>
 

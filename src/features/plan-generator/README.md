@@ -75,7 +75,7 @@ src/features/plan-generator/
 docker run -d --name searxng -p 8888:8080 \
   -v "$(pwd)/searxng:/etc/searxng" \
   -e "BASE_URL=http://localhost:8888/" \
-  -e "INSTANCE_NAME=moodtask" \
+  -e "INSTANCE_NAME=sophotask" \
   searxng/searxng:latest
 ```
 
@@ -170,7 +170,7 @@ curl "http://localhost:8888/search?q=python&format=json"
 
 - 默认**不联网**（只启用第三层跳转按钮）；开启联网层时 UI 明确提示会发送"检索关键词"。
 - 不存储任何抓取到的网页正文，只保存标题 / URL / 作者 / 时长 / 播放量 / 发布时间等元数据。
-- 计划、画像、反馈、资源库全部保存在本机 IndexedDB（`mood-task-planner`）。
+- 计划、画像、反馈、资源库全部保存在本机 IndexedDB（`sophotask-planner`）。
 - 写入"任务表"的是本地 SQLite 任务（Tauri 桌面端；浏览器环境会提示无法写入）。
 
 ## 5. Agent 增强层（模型网关 / 轨迹 / 记忆 / 工具）

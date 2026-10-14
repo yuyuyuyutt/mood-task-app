@@ -160,7 +160,7 @@ UI 入口是 `components/plugins/TrashPanel.tsx`。
 | 文件 | 职责 |
 |---|---|
 | `lib.rs` | **应用唯一入口**：把数据库初始化到 `AppState`、挂载 `fs` / `opener` 插件、注册全部 11 个命令、`pub fn run()` |
-| `main.rs` | 4 行薄封装：`fn main() { mood_task_app::run() }`（release 下隐藏控制台窗口） |
+| `main.rs` | 4 行薄封装：`fn main() { sophotask::run() }`（release 下隐藏控制台窗口） |
 | `commands.rs` | 所有 `#[tauri::command]`（11 个）：任务 CRUD + 增量 `patch_task`、插件命名空间数据读写与全量导出 |
 | `database.rs` | 连接池（r2d2 + rusqlite bundled）、建表与索引、`user_version` 顺序迁移、`Row → Task` 映射 |
 

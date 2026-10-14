@@ -4,7 +4,7 @@
 //   1) SQLite `tasks` 表          —— api.getTasks / api.createTask
 //   2) 插件命名空间 `plugin_data` —— PluginDataStore.dumpAll / restoreRows
 //      （含心情、调度面板 `__schedule`、**学习工作区 `__study`**：会话 / 笔记 / 资源进度 / 辅导记录）
-//   3) IndexedDB `mood-task-planner` —— kv / plans / resources / memory（Agent 记忆）
+//   3) IndexedDB `sophotask-planner` —— kv / plans / resources / memory（Agent 记忆）
 //   4) AppData `user_profile.json` —— 仅 Tauri 环境
 // 说明：头像图片文件不纳入备份（体积大且可重新上传），恢复时保留本机现有头像；
 //      正文临时缓存（contentCache）同样不备份 —— 它是可重新抓取的派生数据。
@@ -25,8 +25,14 @@ import {
   restoreMemoryNotes,
 } from '../plan-generator/db/plannerDB';
 
-export const BACKUP_FORMAT = 'mood-task-backup';
+export const BACKUP_FORMAT = 'sophotask-backup';
 export const BACKUP_VERSION = 1;
+
+/**
+ * 更名前（mood-task-app 时期）导出的备份标识。
+ * 恢复时同样接受，因此用户在改名后依然能导入旧备份（导出统一用新标识）。
+ */
+export const LEGACY_BACKUP_FORMAT = 'mood-task-backup';
 
 const PROFILE_FILE = 'user_profile.json';
 
@@ -157,7 +163,11 @@ export function parseBackup(text: string): { ok: true; backup: BackupFile } | { 
     return { ok: false, error: '文件不是合法的 JSON' };
   }
   const backup = parsed as Partial<BackupFile>;
-  if (!backup || typeof backup !== 'object' || backup.format !== BACKUP_FORMAT) {
+  if (
+    !backup ||
+    typeof backup !== 'object' ||
+    (backup.format !== BACKUP_FORMAT && backup.format !== LEGACY_BACKUP_FORMAT)
+  ) {
     return { ok: false, error: '这不是本应用的备份文件' };
   }
   if (typeof backup.version !== 'number' || backup.version > BACKUP_VERSION) {
@@ -166,7 +176,8 @@ export function parseBackup(text: string): { ok: true; backup: BackupFile } | { 
   if (!backup.data || typeof backup.data !== 'object') {
     return { ok: false, error: '备份内容为空' };
   }
-  return { ok: true, backup: backup as BackupFile };
+  // 归一化 format：更名前的备份导入后按当前标识处理
+  return { ok: true, backup: { ...(backup as BackupFile), format: BACKUP_FORMAT } };
 }
 
 /**
@@ -236,8 +247,8 @@ export async function restoreBackup(backup: BackupFile, host: BackupHost): Promi
   return report;
 }
 
-/** 备份文件名：mood-task-backup-YYYY-MM-DD.json */
+/** 备份文件名：sophotask-backup-YYYY-MM-DD.json */
 export function backupFileName(now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `mood-task-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
+  return `sophotask-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
 }

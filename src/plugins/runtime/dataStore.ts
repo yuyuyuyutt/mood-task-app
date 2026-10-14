@@ -9,12 +9,13 @@
 // 存储后端：Tauri 下走 SQLite（plugin_data 表）；浏览器开发走 localStorage。
 import type { DataCapability, PluginManifest } from '../parser/types';
 import { isTauriRuntime } from '../../utils/runtime';
+import { STORAGE_PREFIX } from '../../utils/storageKeys';
 import type { DataOp, DataRecord, Tombstone } from './types';
 
 /** localStorage 数据键前缀 */
-const DATA_PREFIX = 'mood-task:plugin-data:v1';
+const DATA_PREFIX = `${STORAGE_PREFIX}plugin-data:v1`;
 /** tombstone 存储键 */
-const TOMBSTONE_KEY = 'mood-task:plugin-tombstones:v1';
+const TOMBSTONE_KEY = `${STORAGE_PREFIX}plugin-tombstones:v1`;
 
 export type DataIdentity = string;
 

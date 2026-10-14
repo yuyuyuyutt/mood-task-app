@@ -3,7 +3,7 @@
 前端通过 `@tauri-apps/api/core` 的 `invoke(name, args)` 调用 Rust。
 
 > **命令注册在 `src-tauri/src/lib.rs` 的 `invoke_handler` 里**，实现全部在 `src-tauri/src/commands.rs`。
-> 桌面端 `src-tauri/src/main.rs` 只是 `mood_task_app::run()` 的薄封装——**桌面与移动端共用同一份注册**。
+> 桌面端 `src-tauri/src/main.rs` 只是 `sophotask::run()` 的薄封装——**桌面与移动端共用同一份注册**。
 
 ## 1. 命名与参数规则（最容易踩的地方）
 

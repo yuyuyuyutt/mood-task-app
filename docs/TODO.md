@@ -28,9 +28,9 @@
 - **落地修法**（采用建议中的方案 a）：
   - `src-tauri/src/lib.rs` 成为**唯一入口**：`mod commands; mod database;`、数据库初始化、
     全部命令注册都在这里，`pub fn run()`；
-  - `src-tauri/src/main.rs` 缩成 4 行：`fn main() { mood_task_app::run() }`，
+  - `src-tauri/src/main.rs` 缩成 4 行：`fn main() { sophotask::run() }`，
     并补上 release 下的 `windows_subsystem = "windows"`；
-  - `Cargo.toml` 显式声明 `[lib] name = "mood_task_app"`；
+  - `Cargo.toml` 显式声明 `[lib] name = "sophotask"`；
   - 顺带挂载 `tauri_plugin_opener::init()`（同时修掉 P1-1）。
 - **注意**：要支持移动端还需给 `[lib] crate-type` 加 `staticlib`/`cdylib`，当前桌面端不需要，故未加。
 - **验证**：`cd src-tauri && cargo check --message-format=short` → 0 warning / 0 error。
@@ -97,7 +97,7 @@
 
 ### ✅ P1-6 设置页部分选项不持久化
 
-- **落地修法**：新增 `src/utils/appSettings.ts`（localStorage 键 `mood-task:app-settings:v1`，
+- **落地修法**：新增 `src/utils/appSettings.ts`（localStorage 键 `sophotask:app-settings:v1`，
   损坏/缺字段逐项回退默认值，带 `useAppSettings()` Hook），设置页改用它；
   顺手删掉从未被渲染的死字段（`emailNotifications` / `fontSize` / `compactMode` /
   `privacyMode` / `showMoodPublicly` / `autoSave` / `backupFrequency`）。
